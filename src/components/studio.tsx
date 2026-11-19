@@ -27,6 +27,7 @@ import { briefSchema, configSchema } from '@/lib/validation';
 import { command, upload } from '@/lib/api-client';
 import { SitePreview } from './site-preview';
 import { Field, downloadJSON } from './form-ui';
+import { isGitHubPages, assetPath } from '@/lib/deployment';
 
 const sections = [
   ['sobre', 'Sobre a empresa'],
@@ -77,7 +78,7 @@ export function Studio({
     [confirmation, setConfirmation] = useState<{ id: string; number: string } | null>(null);
   const dirty = useRef(false),
     dialog = useRef<HTMLDialogElement>(null);
-  const key = `nexo-draft:${initialProject?.id || template.slug}`;
+  const key = `${isGitHubPages ? 'nexo-pages-draft' : 'nexo-draft'}:${initialProject?.id || template.slug}`;
   const form = useForm<z.input<typeof briefSchema>>({
     resolver: zodResolver(briefSchema),
     defaultValues: {
@@ -173,6 +174,8 @@ export function Studio({
     );
   }
   async function persist() {
+    if (isGitHubPages)
+      throw new Error('Esta versão salva no dispositivo. A nuvem requer a versão com servidor.');
     if (!userId)
       throw new Error(
         'Entre na sua conta para salvar na nuvem e enviar o pedido. Seu rascunho fica neste dispositivo.',
@@ -192,6 +195,16 @@ export function Studio({
     setPending(true);
     setError('');
     try {
+      if (isGitHubPages) {
+        localStorage.setItem(
+          key,
+          JSON.stringify({ config, id: '', owner: null, savedAt: new Date().toISOString() }),
+        );
+        setLocalSaved(true);
+        dirty.current = false;
+        setMessage('Rascunho salvo neste dispositivo.');
+        return;
+      }
       await persist();
       setMessage('Rascunho salvo na sua conta.');
     } catch (e) {
@@ -222,6 +235,23 @@ export function Studio({
     setPending(true);
     setError('');
     try {
+      if (isGitHubPages) {
+        downloadJSON(
+          {
+            version: 1,
+            template,
+            config,
+            brief: briefSchema.parse(brief),
+            exportedAt: new Date().toISOString(),
+          },
+          'solicitacao-nexo.json',
+        );
+        setModal(false);
+        setMessage(
+          'Solicitação exportada em JSON. Nenhum pedido foi enviado ou armazenado em um servidor.',
+        );
+        return;
+      }
       const id = await persist();
       for (const file of files) await upload(id, file, 'attachment');
       const result = await command({
@@ -324,7 +354,7 @@ export function Studio({
             <Download size={16} />
           </button>
           <button className="button button-outline button-small" onClick={save} disabled={pending}>
-            Salvar rascunho
+            {isGitHubPages ? 'Salvar no dispositivo' : 'Salvar rascunho'}
           </button>
           <button
             className="button button-small"
@@ -429,7 +459,11 @@ export function Studio({
                     onChange={(e) => update('radius', +e.target.value)}
                   />
                 </Field>
-                <p className="studio-help">Seu logotipo pode ser enviado na aba Imagens.</p>
+                <p className="studio-help">
+                  {isGitHubPages
+                    ? 'Uploads de logotipo exigem a versão com servidor.'
+                    : 'Seu logotipo pode ser enviado na aba Imagens.'}
+                </p>
               </>
             )}
             {tab === 'conteudo' && (
@@ -460,8 +494,9 @@ export function Studio({
             {tab === 'imagens' && (
               <>
                 <p className="studio-help">
-                  Escolha uma composição ilustrativa ou envie suas imagens. Uploads privados exigem
-                  uma conta e rascunho salvo. PNG, JPEG ou WebP, até 4 MB.
+                  {isGitHubPages
+                    ? 'Escolha uma composição ilustrativa. Uploads privados e logotipos exigem a versão com servidor; esta publicação não recebe arquivos.'
+                    : 'Escolha uma composição ilustrativa ou envie suas imagens. Uploads privados exigem uma conta e rascunho salvo. PNG, JPEG ou WebP, até 4 MB.'}
                 </p>
                 <div className="image-options">
                   {['architecture', 'sculpture', 'abstract'].map((img) => (
@@ -470,7 +505,7 @@ export function Studio({
                       title={`Usar composição ${img}`}
                       onClick={() => update('heroImage', `/images/${img}.svg`)}
                     >
-                      <img src={`/images/${img}.svg`} alt={`Composição ${img}`} />
+                      <img src={assetPath(`/images/${img}.svg`)} alt={`Composição ${img}`} />
                     </button>
                   ))}
                 </div>
@@ -484,7 +519,7 @@ export function Studio({
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
-                      disabled={pending}
+                      disabled={pending || isGitHubPages}
                       onChange={(e) => {
                         imageUpload(e.target.files?.[0], target as 'logo');
                         e.target.value = '';
@@ -495,7 +530,7 @@ export function Studio({
                 {config.logo && (
                   <Field label="Logotipo selecionado">
                     <img
-                      src={config.logo}
+                      src={assetPath(config.logo)}
                       alt="Logotipo selecionado"
                       style={{ maxHeight: 70, objectFit: 'contain' }}
                     />
@@ -519,7 +554,7 @@ export function Studio({
                         )
                       }
                     >
-                      <img src={src} alt={`Galeria ${i + 1} — clique para remover`} />
+                      <img src={assetPath(src)} alt={`Galeria ${i + 1} — clique para remover`} />
                     </button>
                   ))}
                 </div>
@@ -638,12 +673,18 @@ export function Studio({
             <div>
               <span className="eyebrow">O PRÓXIMO PASSO É UMA CONVERSA</span>
               <h2 id="brief-dialog-title">
-                {confirmation ? 'Seu projeto chegou.' : 'Conte um pouco mais.'}
+                {confirmation
+                  ? 'Seu projeto chegou.'
+                  : isGitHubPages
+                    ? 'Leve sua ideia com você.'
+                    : 'Conte um pouco mais.'}
               </h2>
               <p>
                 {confirmation
                   ? 'Vamos analisar cada detalhe da sua ideia.'
-                  : 'Sua personalização será incluída automaticamente no pedido.'}
+                  : isGitHubPages
+                    ? 'Esta versão prepara um arquivo JSON com a sua personalização e os detalhes abaixo. Nada é enviado ao servidor.'
+                    : 'Sua personalização será incluída automaticamente no pedido.'}
               </p>
             </div>
             <button
@@ -668,7 +709,7 @@ export function Studio({
                 Acompanhar meu projeto
               </Link>
             </div>
-          ) : !userId ? (
+          ) : !userId && !isGitHubPages ? (
             <div className="form-stack">
               <p className="notice">
                 Crie sua conta ou entre para enviar o pedido com segurança. Seu rascunho está salvo
@@ -745,12 +786,14 @@ export function Studio({
                   <input
                     type="file"
                     multiple
+                    disabled={isGitHubPages}
                     accept="image/png,image/jpeg,image/webp,application/pdf"
                     onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, 5))}
                   />
                   <small>
-                    PNG, JPEG, WebP ou PDF. Arquivos privados, visíveis somente por você e pelo
-                    administrador.
+                    {isGitHubPages
+                      ? 'Anexos exigem a versão com servidor. O JSON contém somente os dados e a configuração informados.'
+                      : 'PNG, JPEG, WebP ou PDF. Arquivos privados, visíveis somente por você e pelo administrador.'}
                   </small>
                 </Field>
               </div>
@@ -761,8 +804,9 @@ export function Studio({
                   <Link href="/privacidade" target="_blank">
                     Política de Privacidade
                   </Link>{' '}
-                  e autorizo o tratamento dos meus dados para analisar este pedido e entrar em
-                  contato.
+                  {isGitHubPages
+                    ? 'e entendo que o JSON conterá os dados informados e ficará sob minha responsabilidade. Nenhum pedido será enviado.'
+                    : 'e autorizo o tratamento dos meus dados para analisar este pedido e entrar em contato.'}
                 </span>
               </label>
               {form.formState.errors.consent && (
@@ -771,7 +815,11 @@ export function Studio({
                 </span>
               )}
               <button className="button full-width" disabled={pending}>
-                {pending ? 'Enviando com segurança...' : 'Enviar meu projeto para análise'}
+                {pending
+                  ? 'Preparando...'
+                  : isGitHubPages
+                    ? 'Baixar solicitação em JSON'
+                    : 'Enviar meu projeto para análise'}
               </button>
             </form>
           )}

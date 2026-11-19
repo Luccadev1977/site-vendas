@@ -1,7 +1,16 @@
 import type { NextConfig } from 'next';
 
+const pages = process.env.NEXT_PUBLIC_DEPLOY_TARGET === 'github-pages';
 const config: NextConfig = {
   poweredByHeader: false,
+  ...(pages
+    ? {
+        output: 'export',
+        basePath: '/site-vendas',
+        trailingSlash: true,
+        images: { unoptimized: true },
+      }
+    : {}),
   async headers() {
     return [
       {
@@ -25,4 +34,6 @@ const config: NextConfig = {
     ];
   },
 };
+// Custom response headers require a server; GitHub Pages supplies its HTTP headers.
+if (pages) delete config.headers;
 export default config;

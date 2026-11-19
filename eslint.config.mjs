@@ -6,6 +6,8 @@ export default defineConfig([
   ...nextTs,
   globalIgnores([
     '.next/**',
+    '.pages-build/**',
+    'out/**',
     '.local-tools/**',
     'coverage/**',
     'playwright-report/**',

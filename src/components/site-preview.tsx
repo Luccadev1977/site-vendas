@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- Preview assets are private authenticated routes or local vectors. */
 import { useRef, useState } from 'react';
 import type { SiteConfig, Template } from '@/lib/domain';
+import { assetPath } from '@/lib/deployment';
 export function contrast(hex: string) {
   const rgb = hex
     .replace('#', '')
@@ -37,7 +38,7 @@ export function SitePreview({ config: c, template }: { config: SiteConfig; templ
     <div ref={root} className={`site-preview preview-${template.style}`} style={vars}>
       <nav className="preview-nav" aria-label="Navegação da demonstração">
         <span className="preview-brand">
-          {c.logo && <img src={c.logo} alt="Logotipo" />}
+          {c.logo && <img src={assetPath(c.logo)} alt="Logotipo" />}
           {c.company}
         </span>
         <div className="preview-nav-links">
@@ -64,7 +65,7 @@ export function SitePreview({ config: c, template }: { config: SiteConfig; templ
         </div>
         <div className="preview-hero-art">
           <img
-            src={c.heroImage || '/images/architecture.svg'}
+            src={assetPath(c.heroImage || '/images/architecture.svg')}
             alt={`Composição demonstrativa para ${c.company}`}
           />
         </div>
@@ -117,7 +118,7 @@ export function SitePreview({ config: c, template }: { config: SiteConfig; templ
               ? c.images
               : ['/images/architecture.svg', '/images/sculpture.svg', '/images/abstract.svg']
             ).map((src, i) => (
-              <img key={i} src={src} alt={`Imagem ${i + 1} da galeria demonstrativa`} />
+              <img key={i} src={assetPath(src)} alt={`Imagem ${i + 1} da galeria demonstrativa`} />
             ))}
           </div>
         </section>

@@ -6,9 +6,11 @@ O objetivo é permitir que clientes escolham e personalizem uma direção visual
 
 **Código-fonte:** [Luccadev1977/site-vendas](https://github.com/Luccadev1977/site-vendas).
 
+**Publicação estática:** [Nexo Studio no GitHub Pages](https://luccadev1977.github.io/site-vendas/). O catálogo e o estúdio local são publicados automaticamente pelo workflow em `.github/workflows/deploy.yml`. Consulte [a documentação do GitHub Pages](docs/github-pages.md) para os limites e a separação das compilações.
+
 ## Estado de configuração
 
-O código inclui frontend, APIs, autenticação Supabase, migrations, RLS e o fluxo comercial. **O projeto Supabase e os serviços externos ainda precisam ser configurados; publicar este repositório não implanta a aplicação.** Sem essa configuração, funcionam o catálogo demonstrativo, as demonstrações navegáveis e o estúdio com rascunho no dispositivo. Contas, uploads, pedidos e painéis exigem o banco configurado; não existem pedidos, clientes ou pagamentos simulados.
+O código inclui frontend, APIs, autenticação Supabase, migrations, RLS e o fluxo comercial. **O workflow publica a versão estática no GitHub Pages. O projeto Supabase e os serviços externos ainda precisam ser configurados para a versão completa com servidor.** No Pages, funcionam o catálogo demonstrativo, as demonstrações navegáveis e o estúdio com rascunho no dispositivo. Contas, uploads, pedidos e painéis exigem a versão com servidor e o banco configurado; não existem pedidos, clientes ou pagamentos simulados.
 
 Foram executados testes SQL em PostgreSQL embarcado e testes de validação. A homologação integrada de Auth, Storage e SMTP no Supabase real continua pendente. Consulte [a evidência de verificação](docs/verification.md).
 
@@ -187,16 +189,31 @@ E2E_ADMIN_PASSWORD=<senha de teste>
 
 Não salve essas credenciais no Git nem use contas reais. O teste altera o Pix do projeto de teste, cria registros com prefixo QA e testa confirmação manual sem transferência real. Os registros são preservados para inspeção; não há limpeza destrutiva automática. Cadastro, confirmação e recuperação por SMTP exigem ainda o roteiro manual em `docs/verification.md`.
 
-## Implantar na Vercel
+## Publicar no GitHub Pages
 
-1. Envie este repositório ao seu provedor Git e importe como projeto Next.js na Vercel.
-2. Selecione Node.js 24.x (ou versão suportada dentro do `engines` do projeto), instalação `pnpm install --frozen-lockfile` e build `pnpm build`.
-3. Cadastre as variáveis obrigatórias em Production e, com outro Supabase, em Preview. Segredos SMTP/worker permanecem sem prefixo `NEXT_PUBLIC_`.
+O destino desta publicação é o GitHub Pages. Em **Settings → Pages → Source**, utilize **GitHub Actions**. Cada push em `main` aciona o workflow de instalação, lint, testes, exportação estática e publicação. Não é necessário configurar Vercel nem fornecer chaves Supabase para essa versão.
+
+```powershell
+pnpm build:pages
+node scripts/verify-pages.mjs
+```
+
+O artefato publicável fica em `out/`, com os recursos sob `/site-vendas`. APIs, autenticação e painéis privados permanecem nas fontes originais para uso futuro, mas não são executados no Pages. A solicitação preparada no estúdio estático é baixada em JSON, sem envio ao banco. Veja [os detalhes e a configuração](docs/github-pages.md).
+
+## Versão completa com backend, preservada para uso futuro
+
+O comando `pnpm build` continua compilando a aplicação com servidor. Para executá-la em um ambiente Node.js, configure Supabase e as variáveis documentadas e use `pnpm start`. Essa versão precisa de uma hospedagem com processamento no servidor; ela não é o artefato enviado ao GitHub Pages.
+
+### Configuração futura do servidor
+
+1. Prepare um ambiente Node.js 24.x, instale as dependências com `pnpm install --frozen-lockfile` e compile com `pnpm build`.
+2. Execute `pnpm start` atrás de um proxy HTTPS configurado para o seu domínio. O processo deve permanecer ativo; não se trata de hospedagem estática.
+3. Cadastre as variáveis obrigatórias em cada ambiente, usando outro projeto Supabase para testes. Segredos SMTP/worker permanecem sem prefixo `NEXT_PUBLIC_`.
 4. Configure domínio HTTPS e ajuste `NEXT_PUBLIC_SITE_URL`, Site URL e Redirect URLs do Supabase. Refaça o build ao alterar variáveis públicas.
 5. Aplique migrations no projeto correto antes do primeiro acesso comercial. Rode os advisors, os testes conectados e o roteiro de homologação.
 6. Configure envio de e-mails e backups conforme sua operação; não foram criados serviços externos nesta entrega.
 
-O limite de 4 MiB permite upload via backend dentro do [limite de payload das funções Vercel](https://vercel.com/docs/functions/limitations). Imagens públicas do portfólio usam `next/image`; imagens privadas da prévia usam a rota autenticada, pois o otimizador não recebe a sessão do cliente.
+Os uploads da versão completa têm limite de 4 MiB. Imagens públicas do portfólio usam `next/image`; imagens privadas da prévia usam a rota autenticada, pois o otimizador não recebe a sessão do cliente. Esses endpoints não são publicados no GitHub Pages.
 
 ## Antes da operação comercial
 

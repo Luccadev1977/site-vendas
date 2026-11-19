@@ -1,5 +1,9 @@
 # Nexo Studio — arquitetura
 
+## Publicação estática separada
+
+O GitHub Pages utiliza `pnpm build:pages`, que gera uma árvore temporária `.pages-build/` a partir dos componentes compartilhados e das rotas em `pages-site/`, exportando somente arquivos públicos em `out/`. O build normal `pnpm build` mantém todas as rotas de servidor, autenticação, administração e Supabase. Veja [GitHub Pages](github-pages.md).
+
 Repositório inicialmente vazio, inspecionado em 19/11/2026. Aplicação Next.js App Router, TypeScript, Tailwind, componentes React e Supabase (Postgres, Auth, Storage). Hospedagem compatível com Vercel.
 
 ## Limites de confiança
