@@ -1,0 +1,215 @@
+# Nexo Studio
+
+Plataforma de venda e personalização de sites construída do zero em Next.js App Router, TypeScript, Tailwind CSS, Lucide, Motion, React Hook Form, Zod e Supabase. Identidade provisória original, tema escuro/claro e experiência responsiva.
+
+O objetivo é permitir que clientes escolham e personalizem uma direção visual, solicitem um orçamento e acompanhem a contratação e o desenvolvimento. O administrador centraliza propostas, comunicação, pagamentos por Pix e entregas em uma área privada.
+
+**Código-fonte:** [Luccadev1977/site-vendas](https://github.com/Luccadev1977/site-vendas).
+
+## Estado de configuração
+
+O código inclui frontend, APIs, autenticação Supabase, migrations, RLS e o fluxo comercial. **O projeto Supabase e os serviços externos ainda precisam ser configurados; publicar este repositório não implanta a aplicação.** Sem essa configuração, funcionam o catálogo demonstrativo, as demonstrações navegáveis e o estúdio com rascunho no dispositivo. Contas, uploads, pedidos e painéis exigem o banco configurado; não existem pedidos, clientes ou pagamentos simulados.
+
+Foram executados testes SQL em PostgreSQL embarcado e testes de validação. A homologação integrada de Auth, Storage e SMTP no Supabase real continua pendente. Consulte [a evidência de verificação](docs/verification.md).
+
+## Funcionalidades
+
+- Homepage, benefícios, processo, FAQ, SEO, sitemap, robots, Open Graph, termos e privacidade.
+- 14 categorias, 42 modelos iniciais e três composições de página distintas: minimalista, moderno e premium. Navegação por seções, conteúdo específico do nicho e interações demonstrativas identificadas.
+- Estúdio: identidade, conteúdo, imagens, estrutura, desktop/tablet/celular, rascunho local e na conta, restauração com aviso, feedback ao salvar e exportação JSON versionada.
+- Solicitação validada com briefing completo, anexos privados, personalizações e número único. Repetir o envio do mesmo projeto não cria outro pedido.
+- Cadastro, confirmação de e-mail, login, recuperação de senha e logout.
+- Painel do cliente: projetos, rascunhos, propostas, pagamentos, arquivos, conversas e histórico.
+- Administração privada: indicadores, pedidos, propostas, recusas, solicitações de informação, andamento, catálogo, imagens públicas, projetos realizados autorizados, depoimentos, Pix, financeiro e auditoria.
+- Pix liberado somente depois da aprovação. Comprovante inicia verificação; recebimento só é confirmado por ação administrativa. Não existe integração bancária nem QR Code fictício.
+- Notificações internas e outbox transacional para e-mail via SMTP configurável no backend.
+- Relatórios CSV protegidos contra fórmulas, com leitura paginada para não truncar valores no limite padrão do Supabase.
+
+## Executar localmente
+
+Requisitos: Node.js 22+ e pnpm 11.25.0. Versões exatas e lockfile incluídos. Webpack foi escolhido nos scripts porque o Turbopack apresentou falha de inicialização de subprocesso no ambiente Windows isolado; o build Webpack passou.
+
+```powershell
+git clone https://github.com/Luccadev1977/site-vendas.git
+cd site-vendas
+pnpm install --frozen-lockfile
+if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
+# Preencha as variáveis antes de habilitar o backend.
+pnpm dev
+```
+
+Se você já está na pasta do projeto, comece pela instalação das dependências, sem repetir o clone. O arquivo `.env.local` deve permanecer somente na sua máquina.
+
+Abra [a aplicação local](http://127.0.0.1:3000). Neste computador, se o comando `pnpm` não estiver no PATH, use `./scripts/pnpm.ps1` no lugar de `pnpm`; o script localiza o pnpm incluído no runtime Node do Codex.
+
+```powershell
+./scripts/pnpm.ps1 dev
+```
+
+## Criar e conectar o Supabase
+
+1. Crie um projeto no [Dashboard do Supabase](https://supabase.com/dashboard). Escolha a região de acordo com a sua operação e defina uma senha forte para o banco.
+2. Em **Project Settings → API**, copie a URL e a **publishable key**. Não coloque service role ou secret key em variável `NEXT_PUBLIC_`.
+3. Preencha `.env.local`:
+
+| Variável                               | Valor necessário                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`                 | URL canônica. Local: `http://127.0.0.1:3000`. Produção: seu domínio HTTPS, sem barra final. |
+| `NEXT_PUBLIC_SUPABASE_URL`             | URL HTTPS do projeto Supabase.                                                              |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Chave publicável do mesmo projeto.                                                          |
+| `PRIVACY_CONTACT_EMAIL`                | Canal de privacidade que você atende.                                                       |
+
+4. Aplique as migrations **na ordem**. O CLI 3.2.0 está fixado no projeto; os comandos abaixo foram conferidos em sua ajuda:
+
+```powershell
+pnpm exec supabase login
+pnpm exec supabase link SEU_PROJECT_REF
+pnpm exec supabase migration up --remote
+pnpm exec supabase db advisors --remote --type security --fail-on error
+```
+
+O CLI pede autenticação/confirmação do alvo remoto. Não coloque tokens ou a senha do banco na linha de comando nem no repositório. Se preferir o SQL Editor, execute integralmente estes arquivos, em ordem, em um projeto novo:
+
+1. `supabase/migrations/20261119172527_core_platform.sql`
+2. `supabase/migrations/20261119172528_initial_catalog.sql`
+3. `supabase/migrations/20261119175055_managed_content.sql`
+
+**Não use os dois métodos no mesmo banco sem reconciliar o histórico de migrations.** Os testes locais aplicam esses mesmos arquivos em PostgreSQL, com schemas `auth` e `storage` mínimos para testar as políticas. O Storage e o Auth gerenciados precisam ser homologados no Supabase real.
+
+5. Exponha somente o schema `public` na Data API. Mantenha `private` fora dos schemas expostos. As migrations concedem explicitamente as permissões e ativam RLS.
+6. Os buckets `project-files` e `catalog-assets` são criados pelas migrations. `project-files` é privado. `catalog-assets` tem leitura pública por política para imagens demonstrativas; somente o administrador pode gravar. Ambos aceitam até 4 MiB por arquivo; PDFs só no bucket privado. Não torne o bucket de projetos público.
+7. Reinicie `pnpm dev` após alterar variáveis públicas.
+
+## Configurar autenticação e e-mails de acesso
+
+No Supabase Authentication:
+
+- Ative o provedor de e-mail e a confirmação de e-mail. **Desative logins anônimos.** Configure senha mínima de 12 caracteres e as proteções e limites do serviço.
+- Em URL Configuration, informe a Site URL canônica e autorize `http://127.0.0.1:3000/auth/confirm**` para desenvolvimento e `https://SEU_DOMINIO/auth/confirm**` em produção. Use um projeto separado para testes e previews.
+- Configure SMTP próprio para os e-mails de autenticação. Os campos SMTP da aplicação abaixo são para notificações de projetos, não substituem o SMTP do Auth.
+- Em Email Templates, use links por token hash. A aplicação envia `.RedirectTo` contendo `?next=...`; por isso os parâmetros abaixo são adicionados com `&amp;`.
+
+Confirmação de cadastro:
+
+```html
+<a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=signup">Confirmar meu e-mail</a>
+```
+
+Recuperação:
+
+```html
+<a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=recovery"
+  >Redefinir minha senha</a
+>
+```
+
+A rota também aceita o callback PKCE com `code`. O destino é validado como caminho local para impedir redirecionamentos externos. Verifique cadastro e recuperação em outro navegador/dispositivo durante a homologação. Referências: [SSR Supabase](https://supabase.com/docs/guides/auth/server-side/creating-a-client), [templates de e-mail](https://supabase.com/docs/guides/auth/auth-email-templates).
+
+## Inicializar a única conta administrativa
+
+1. Cadastre sua própria conta pela aplicação e confirme o e-mail.
+2. Em Authentication → Users, copie o UUID dessa conta.
+3. Abra `supabase/bootstrap-admin.sql`, substitua o UUID sentinela pelo seu UUID e execute no SQL Editor como proprietário do projeto.
+4. Entre novamente e acesse `/admin`. Cadastre os dados Pix em `/admin/configuracoes`.
+
+Não há conta administrativa automática, senha padrão nem autorização baseada em `user_metadata`. A tabela `private.administrator` permite exatamente uma conta. A inicialização falha se já existir administrador. Para uma transferência de administração, o operador deve verificar a nova conta e alterar essa tabela pelo SQL Editor; não há endpoint público para isso.
+
+## Fluxo de operação
+
+O cliente escolhe um modelo, personaliza e salva. O envio congela o briefing e a configuração no projeto. O administrador analisa, solicita informações, recusa ou envia proposta com valor em centavos, escopo, condições e prazo. O cliente aprova ou recusa. A aprovação cria o pagamento pendente e autoriza a consulta do Pix; sem chave cadastrada, o cliente recebe orientação para falar com o estúdio.
+
+Enviar comprovante muda o pagamento para `review`, nunca para confirmado. Somente após conferir o recebimento no banco, o administrador usa **Confirmar recebimento no banco**. A partir daí o projeto pode passar por desenvolvimento, revisão, conclusão e entrega. As transições são verificadas dentro de uma transação SQL e registradas no histórico. O fluxo inicial controla um pagamento integral por proposta aprovada; parcelamento e conciliação bancária não estão implementados.
+
+## Notificações por e-mail (opcional)
+
+Notificações internas funcionam com o banco. Eventos também entram em `private.email_outbox`, sem expor comprovantes, chave Pix ou briefing por e-mail.
+
+| Variável somente no servidor | Uso                                                               |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `SUPABASE_SERVICE_ROLE_KEY`  | Worker de e-mails. Nenhuma API comercial utiliza essa credencial. |
+| `SMTP_HOST`, `SMTP_PORT`     | Provedor e porta SMTP.                                            |
+| `SMTP_SECURE`                | `true` para TLS direto; `false` para STARTTLS obrigatório.        |
+| `SMTP_USER`, `SMTP_PASSWORD` | Credenciais do provedor.                                          |
+| `MAIL_FROM`                  | Remetente verificado no provedor.                                 |
+| `CRON_SECRET`                | Segredo aleatório forte para autorizar o worker.                  |
+
+Um agendador de backend deve chamar `POST /api/internal/email` com `Authorization: Bearer <CRON_SECRET>`. O agendador **não foi provisionado**. Cada execução reserva até cinco e-mails por dez minutos, com até cinco tentativas e `SKIP LOCKED` para concorrência. Erros não registram credenciais. A entrega é ao menos uma vez: uma interrupção depois do aceite pelo SMTP pode exigir reconciliação para evitar e-mail repetido. Use um provedor com política de idempotência se precisar dessa garantia adicional.
+
+Não invoque esse endpoint em produção com dados fictícios. Configure e homologue primeiro em um projeto de teste. Verifique a fila e os logs do provedor para falhas definitivas; novas tentativas após o limite exigem intervenção do operador.
+
+## Segurança
+
+- Sessão verificada no servidor com `getUser`; o proxy renova cookies, mas não é a camada de autorização.
+- RLS em todas as tabelas públicas e privadas. Acesso de leitura por titularidade ou administrador.
+- Sem permissões diretas de `INSERT`, `UPDATE` ou `DELETE` nas tabelas comerciais para usuários. RPCs com validação no banco protegem também chamadas diretas à Data API.
+- Implementações privilegiadas em schema privado, `search_path` fixo, `EXECUTE` restrito e verificações explícitas de identidade/titularidade.
+- Bloqueio transacional por projeto, índices únicos e envio idempotente. Limites persistentes de 60 ações por minuto, 10 pedidos por 24 horas e 20 rascunhos por cliente.
+- Até 50 arquivos registrados por projeto, quota de objetos e 4 MiB por arquivo. Assinatura binária conferida no servidor; SVG/HTML e executáveis não são aceitos em uploads.
+- Arquivos privados não são sobrescritos nem removidos por clientes após registro. Download com sessão, RLS, `nosniff` e `Content-Disposition`. Comprovantes não usam URLs públicas.
+- Validação Zod, limites de corpo, verificação de Origin, conteúdo React escapado e CSP. Não há HTML arbitrário do cliente.
+- Sessões e APIs privadas com `no-store`. Nunca compartilhar cache de páginas autenticadas.
+- Auditoria registra decisões administrativas e alterações de configurações, sem copiar a chave Pix para o log.
+
+O limitador SQL protege mutações aceitas. Proteção contra ataques de rede e tentativas inválidas em grande volume deve ser configurada no provedor de hospedagem e nos limites do Supabase Auth. Para exclusão de dados, o operador deve atender o titular e cumprir retenção contratual/legal; não há exclusão de conta automatizada nesta versão.
+
+## Testes e build
+
+```powershell
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm audit --prod
+```
+
+Os testes Vitest executam a migration real em PGlite, que é PostgreSQL embarcado, incluindo RLS com papéis `anon`/`authenticated`, duas contas de clientes, administrador e conta sem confirmação. Não utilizam respostas comerciais mockadas.
+
+Os testes de navegador reutilizáveis estão em `tests/e2e`. Para executá-los após iniciar o servidor:
+
+```powershell
+pnpm exec playwright install chromium
+pnpm test:e2e
+```
+
+A suíte conectada `live.spec.ts` fica desabilitada por padrão. Ela exige um **projeto Supabase separado de teste**, as migrations, a conta administrativa inicializada e três contas de teste confirmadas. Configure no ambiente do processo de testes:
+
+```text
+E2E_ALLOW_TEST_PROJECT=true
+E2E_SUPABASE_URL=<mesma URL de NEXT_PUBLIC_SUPABASE_URL do servidor de testes>
+E2E_BASE_URL=http://127.0.0.1:3000
+E2E_CLIENT_EMAIL=<cliente de teste>
+E2E_CLIENT_PASSWORD=<senha de teste>
+E2E_OTHER_EMAIL=<segundo cliente de teste>
+E2E_OTHER_PASSWORD=<senha de teste>
+E2E_ADMIN_EMAIL=<admin de teste>
+E2E_ADMIN_PASSWORD=<senha de teste>
+```
+
+Não salve essas credenciais no Git nem use contas reais. O teste altera o Pix do projeto de teste, cria registros com prefixo QA e testa confirmação manual sem transferência real. Os registros são preservados para inspeção; não há limpeza destrutiva automática. Cadastro, confirmação e recuperação por SMTP exigem ainda o roteiro manual em `docs/verification.md`.
+
+## Implantar na Vercel
+
+1. Envie este repositório ao seu provedor Git e importe como projeto Next.js na Vercel.
+2. Selecione Node.js 24.x (ou versão suportada dentro do `engines` do projeto), instalação `pnpm install --frozen-lockfile` e build `pnpm build`.
+3. Cadastre as variáveis obrigatórias em Production e, com outro Supabase, em Preview. Segredos SMTP/worker permanecem sem prefixo `NEXT_PUBLIC_`.
+4. Configure domínio HTTPS e ajuste `NEXT_PUBLIC_SITE_URL`, Site URL e Redirect URLs do Supabase. Refaça o build ao alterar variáveis públicas.
+5. Aplique migrations no projeto correto antes do primeiro acesso comercial. Rode os advisors, os testes conectados e o roteiro de homologação.
+6. Configure envio de e-mails e backups conforme sua operação; não foram criados serviços externos nesta entrega.
+
+O limite de 4 MiB permite upload via backend dentro do [limite de payload das funções Vercel](https://vercel.com/docs/functions/limitations). Imagens públicas do portfólio usam `next/image`; imagens privadas da prévia usam a rota autenticada, pois o otimizador não recebe a sessão do cliente.
+
+## Antes da operação comercial
+
+Substitua Nexo Studio pela sua marca, informe a identificação do responsável, endereço/canais de atendimento, política concreta de retenção e canal de privacidade. Revise os termos, a política e as condições contratuais conforme sua operação. Publique projetos e depoimentos somente com autorização. A estrutura facilita o tratamento de dados e direitos previstos na LGPD; a conformidade depende também dos processos do controlador. Referência: [orientações da ANPD sobre direitos dos titulares](https://www.gov.br/anpd/pt-br/assuntos/titular-de-dados-1/direito-dos-titulares).
+
+## Organização
+
+```text
+src/app/             Páginas públicas, conta, cliente, admin e APIs
+src/components/      Componentes visuais, estúdio e painéis
+src/lib/             Domínio, validação, autenticação e acesso aos dados
+supabase/migrations/ Schema, políticas, funções e catálogo inicial
+supabase/bootstrap-admin.sql Inicialização manual segura do administrador
+tests/               Integração PostgreSQL, validação e E2E opt-in
+docs/                Arquitetura e evidências de verificação
+```

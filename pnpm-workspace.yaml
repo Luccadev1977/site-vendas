@@ -1,0 +1,9 @@
+minimumReleaseAgeExclude:
+  - '@electric-sql/pglite@0.5.17'
+  - '@supabase/auth-js@2.119.2'
+  - '@supabase/functions-js@2.119.2'
+  - '@supabase/postgrest-js@2.119.2'
+  - '@supabase/realtime-js@2.119.2'
+  - '@supabase/storage-js@2.119.2'
+  - '@supabase/supabase-js@2.119.2'
+  - lucide-react@1.76.0
