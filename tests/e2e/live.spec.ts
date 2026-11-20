@@ -48,6 +48,7 @@ test('connected commercial workflow, private receipt, manual confirmation and is
     await client.reload();
     await expect(client.getByLabel('Nome da empresa', { exact: true })).toHaveValue(name);
     await client.getByRole('button', { name: 'Solicitar orçamento', exact: true }).click();
+    await client.getByRole('button', { name: 'Continuar para os detalhes', exact: true }).click();
     const form = client.getByRole('dialog');
     await form.getByLabel('Nome completo', { exact: true }).fill('Cliente de homologação');
     await form.getByLabel('E-mail', { exact: true }).fill(process.env.E2E_CLIENT_EMAIL!);

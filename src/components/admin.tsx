@@ -30,9 +30,11 @@ import {
   type Testimonial,
 } from '@/lib/domain';
 import type { Command } from '@/lib/validation';
-import { Field } from './form-ui';
+import { Field, downloadJSON } from './form-ui';
+import { isPremium, basePrice, styleLabels } from '@/lib/catalog';
 import { Logout, Notifications, Refresh, StatusBadge } from './dashboard';
 import { PublicImageUpload } from './content-manager';
+function catalogTemplate(item:Template|Category|Testimonial):item is Template{return 'category_id' in item && 'content' in item;}
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -588,6 +590,7 @@ export function AdminCatalog({
           featured: f.has('featured'),
           active: f.has('active'),
           content: {
+            ...editing.value.content,
             company: text('company'),
             title: text('description'),
             slogan: text('slogan'),
@@ -596,12 +599,33 @@ export function AdminCatalog({
             secondary: text('secondary'),
             background: text('background'),
             buttonColor: text('buttonColor'),
+            tier: text('tier'),
+            basePriceCents: text('basePrice')
+              ? String(Math.round(Number(text('basePrice')) * 100))
+              : '',
           },
         },
       };
     setPending(true);
     setError('');
     try {
+      if (input.action === 'template') {
+        const current = input.payload,
+          price = basePrice(current);
+        const peers = templates.filter(
+          (t) => t.id !== current.id && t.active && basePrice(t) !== null,
+        );
+        if (
+          price !== null &&
+          current.active &&
+          (isPremium(current)
+            ? peers.some((t) => !isPremium(t) && basePrice(t)! >= price)
+            : peers.some((t) => isPremium(t) && basePrice(t)! <= price))
+        )
+          throw new Error(
+            'Os preços-base Premium devem superar todos os preços convencionais configurados.',
+          );
+      }
       await command(input);
       setEditing(null);
       router.refresh();
@@ -618,6 +642,31 @@ export function AdminCatalog({
           <span className="eyebrow">SUA VITRINE EM MOVIMENTO</span>
           <h1>Catálogo & conteúdo</h1>
           <p>Gerencie modelos, categorias e depoimentos publicados.</p>
+          <p className="studio-help">
+            Valores em branco aparecem como “Sob consulta”. Preços cadastrados são estimativas
+            iniciais. O Pages recebe alterações na próxima compilação com o catálogo público
+            exportado.
+          </p>
+          <button
+            className="text-button"
+            onClick={() =>
+              downloadJSON(
+                {
+                  version: 1,
+                  templates: templates
+                    .filter((t) => t.active && t.id.startsWith('11000000-'))
+                    .map((t) => ({
+                      id: t.id,
+                      tier: t.content.tier || 'conventional',
+                      basePriceCents: t.content.basePriceCents || '',
+                    })),
+                },
+                'catalog-settings.json',
+              )
+            }
+          >
+            Exportar preços e classificações para o Pages
+          </button>
         </div>
         <button className="button button-small" onClick={() => edit(tab)}>
           <Plus size={15} />
@@ -664,7 +713,19 @@ export function AdminCatalog({
                   {'demo' in item && item.demo === true && <small>Demonstrativo</small>}
                 </td>
                 <td>
-                  {'style' in item ? String(item.style) : 'slug' in item ? item.slug : item.company}
+                  {catalogTemplate(item) ? (
+                    <>
+                      {styleLabels[item.style]}
+                      <small>
+                        {isPremium(item) ? 'Premium' : 'Convencional'} ·{' '}
+                        {basePrice(item) !== null ? money(basePrice(item)!) : 'Sob consulta'}
+                      </small>
+                    </>
+                  ) : 'slug' in item ? (
+                    item.slug
+                  ) : (
+                    item.company
+                  )}
                 </td>
                 <td>
                   <span className="badge">{item.active ? 'Ativo' : 'Desativado'}</span>
@@ -763,8 +824,39 @@ export function AdminCatalog({
                     <select name="style" defaultValue={editing.value.style || 'moderno'}>
                       <option value="minimalista">Minimalista</option>
                       <option value="moderno">Moderno</option>
+                      <option value="elegante">Elegante</option>
+                      {editing.value.style === 'premium' && (
+                        <option value="premium">Elegante (legado)</option>
+                      )}
+                    </select>
+                  </Field>
+                  <Field label="Classificação">
+                    <select
+                      name="tier"
+                      defaultValue={editing.value.content?.tier || 'conventional'}
+                    >
+                      <option value="conventional">Convencional</option>
                       <option value="premium">Premium</option>
                     </select>
+                  </Field>
+                  <Field label="Valor inicial estimado (R$)">
+                    <input
+                      name="basePrice"
+                      type="number"
+                      min="1"
+                      max="1000000"
+                      step="0.01"
+                      placeholder="Sob consulta"
+                      defaultValue={
+                        editing.value.content?.basePriceCents
+                          ? Number(editing.value.content.basePriceCents) / 100
+                          : ''
+                      }
+                    />
+                    <small>
+                      Deixe em branco até definir valores reais. Premium deve superar os preços
+                      convencionais.
+                    </small>
                   </Field>
                   <Field label="Nome da empresa demonstrativa">
                     <input
@@ -815,6 +907,9 @@ export function AdminCatalog({
                       <option value="/images/architecture.svg">Arquitetura</option>
                       <option value="/images/sculpture.svg">Escultura</option>
                       <option value="/images/abstract.svg">Abstrato</option>
+                      {demoImage.endsWith('.webp') && demoImage.startsWith('/images/') && (
+                        <option value={demoImage}>Imagem da coleção</option>
+                      )}
                       {demoImage.startsWith('/api/') && (
                         <option value={demoImage}>Imagem enviada</option>
                       )}

@@ -81,6 +81,7 @@ beforeAll(async () => {
   await db.exec(await readFile('supabase/migrations/20261119172527_core_platform.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261119172528_initial_catalog.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261119175055_managed_content.sql', 'utf8'));
+  await db.exec(await readFile('supabase/migrations/20261120145745_showroom_catalog.sql', 'utf8'));
   for (const [id, email, verified] of [
     [owner, 'owner@example.test', true],
     [other, 'other@example.test', true],
@@ -105,11 +106,58 @@ afterAll(async () => {
 });
 
 describe('Transactional project workflow — real PostgreSQL SQL', () => {
-  it('seeds 14 categories and 42 models with three different styles', async () => {
+  it('enforces configurable Premium pricing through authenticated RPC and blocks non-admin changes', async () => {
+    const standard = templates.find((t) => t.content.tier === 'conventional')!,
+      premium = templates.find((t) => t.content.tier === 'premium')!;
+    await db.exec('begin');
+    try {
+      await as(admin);
+      await cmd('template', {
+        ...standard,
+        content: { ...standard.content, basePriceCents: '200000' },
+      });
+      await expect(
+        cmd('template', { ...premium, content: { ...premium.content, basePriceCents: '100000' } }),
+      ).rejects.toThrow('Premium');
+    } finally {
+      await db.exec('rollback');
+    }
+    await db.exec('begin');
+    try {
+      await as(admin);
+      await cmd('template', {
+        ...standard,
+        content: { ...standard.content, basePriceCents: '200000' },
+      });
+      await cmd('template', {
+        ...premium,
+        content: { ...premium.content, basePriceCents: '300000' },
+      });
+      const saved = (await rows('templates')).find((t) => t.id === premium.id)!;
+      expect((saved.content as Record<string, string>).basePriceCents).toBe('300000');
+      await expect(
+        cmd('template', {
+          ...standard,
+          content: { ...standard.content, basePriceCents: '400000' },
+        }),
+      ).rejects.toThrow('convencional');
+    } finally {
+      await db.exec('rollback');
+    }
+    await as(owner);
+    await expect(cmd('template', premium)).rejects.toThrow('administrador');
+  });
+  it('retains all 42 original template IDs for historical project snapshots', async () => {
+    await as(admin);
+    const all = await rows('templates');
+    expect(all.filter((t) => String(t.id).startsWith('10000000-'))).toHaveLength(42);
+    expect(all.filter((t) => t.active)).toHaveLength(42);
+  });
+  it('publishes 13 categories and 42 active models while retaining archived sources', async () => {
     await as(null, 'anon');
-    expect((await rows('categories')).length).toBe(14);
+    expect((await rows('categories')).length).toBe(13);
     expect((await rows('templates')).length).toBe(42);
-    expect(categories).toHaveLength(14);
+    expect(categories).toHaveLength(13);
   });
   it('saves a complete draft and submits exactly once with a unique request number', async () => {
     const id = await draft();
@@ -253,7 +301,7 @@ describe('Isolation and hostile direct API use', () => {
       'Modelo histórico QA',
     );
     expect((p.template_snapshot as { style: string }).style).toBe('minimalista');
-    expect((p.template_snapshot as { category_name: string }).category_name).toBe('Institucionais');
+    expect((p.template_snapshot as { category_name: string }).category_name).toBe('Advocacia');
     await expect(
       cmd('save_draft', { id: randomUUID(), template_id: custom.id, config: cfg }),
     ).rejects.toThrow(/Modelo indisponível/);

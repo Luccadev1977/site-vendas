@@ -4,6 +4,13 @@ export default function Privacy() {
     <main id="conteudo" className="wrap legal">
       <span className="eyebrow">TRANSPARÊNCIA SOBRE SEUS DADOS</span>
       <h1>Política de Privacidade</h1>
+      <p className="notice">
+        Na publicação estática do GitHub Pages, rascunhos ficam no localStorage e imagens escolhidas
+        ficam no IndexedDB deste navegador. Exportações JSON podem conter suas imagens e dados de
+        contato. Não há envio de solicitações, login ou armazenamento no servidor por essa
+        publicação. Limpar os dados do navegador remove os rascunhos e imagens locais; exporte antes
+        de trocar de dispositivo.
+      </p>
       <p>
         Esta plataforma usa seus dados para analisar solicitações de sites, preparar propostas,
         executar projetos contratados e manter a comunicação sobre o serviço.

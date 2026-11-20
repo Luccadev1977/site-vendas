@@ -47,3 +47,13 @@ Os testes SQL usam PostgreSQL embarcado com schemas mínimos de Auth/Storage. El
 ## Limite observado
 
 O usuário informou que ainda criará o projeto Supabase. Não foram fornecidas credenciais nem provisionados banco hospedado, Auth, Storage, SMTP ou Vercel. Os cenários conectados não devem ser classificados como homologados até que esse roteiro seja executado.
+
+## Atualização do showroom — 20/11/2026
+
+Verificações executadas nesta atualização: 50 testes Vitest/PGlite; lint; TypeScript; build completo com APIs e painéis; build estático de 137 páginas, incluindo compatibilidade com links antigos; verificação dos 729 arquivos do artefato e de 2.933 referências locais. HTTP: as 42 demonstrações, os 42 estúdios e demais páginas públicas retornaram 200; o smoke da versão completa passou em 16 verificações de rotas, cabeçalhos, Origin e proteção das APIs.
+
+No navegador, as 42 demonstrações renderizaram título, imagem local e aviso de conteúdo fictício. Foram exercitados: comparação de três Premium, filtros combinados, edição e persistência em restaurante/arquitetura/tecnologia, fontes calculadas, paleta, FAQ, desfazer/refazer, edição pela prévia, tela cheia e revisão. Em viewport de 390×844, o editor com ferramentas recolhidas não excedeu a largura disponível.
+
+Um JSON de teste sem dados pessoais, com imagem WebP incluída, foi importado pelo campo **Ou colar projeto JSON**. A prévia mostrou a imagem como URL `blob`, recuperou a imagem e o projeto após recarregar e concluiu a exportação com imagens pela interface. A transferência de arquivos pelo seletor nativo da automação travou; a seleção por arquivo e sua confirmação visual não foram concluídas nesse teste. O roteiro manual continua sendo selecionar PNG/JPEG/WebP, conferir a prévia, confirmar, recarregar e exportar/importar em outro navegador. Não foram usados arquivos pessoais.
+
+Os testes SQL cobrem a migração e a hierarquia dos preços; nenhum Supabase real foi configurado, nem executados testes conectados de Auth, Storage ou SMTP. Os specs E2E foram atualizados para os novos controles; a verificação de navegador desta entrega foi feita pela automação CUA, sem executar a suíte Playwright conectada.

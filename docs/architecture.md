@@ -19,6 +19,8 @@ Repositório inicialmente vazio, inspecionado em 19/11/2026. Aplicação Next.js
 
 ## Módulos
 
+O showroom usa `catalog.ts` para 39 modelos convencionais e três Premium, `template-routes.ts` para links antigos e `showroom.css` para composições por nicho/estilo. O editor usa um reducer de histórico limitado a 80 alterações; imagens locais ficam no IndexedDB e nunca são aceitas pelo schema de comandos do servidor. A nova migration arquiva o catálogo original sem apagar seus IDs ou snapshots. Classificação e preços públicos ficam no `content` dos modelos, com validação de hierarquia no banco e exportação administrativa para o snapshot do Pages. Veja [showroom](showroom.md).
+
 `src/app`: páginas e APIs; `src/components`: interface pública, estúdio e painéis; `src/lib`: schemas, catálogo, auth e serviços; `supabase/migrations`: schema, políticas e catálogo inicial; `tests`: validação e integração SQL em PostgreSQL embarcado.
 
 ## Verificação

@@ -15,7 +15,7 @@ export const statuses = {
   cancelled: 'Cancelado',
 } as const;
 export type Status = keyof typeof statuses;
-export type Style = 'minimalista' | 'moderno' | 'premium';
+export type Style = 'minimalista' | 'moderno' | 'elegante' | 'premium';
 export type Category = {
   id: string;
   slug: string;
@@ -44,6 +44,8 @@ export type SiteConfig = {
   secondary: string;
   background: string;
   buttonColor: string;
+  textColor?: string;
+  highlight?: string;
   font: 'sans' | 'serif' | 'mono';
   radius: number;
   title: string;

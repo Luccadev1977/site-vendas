@@ -5,7 +5,7 @@ import { catalog } from '@/lib/data';
 export const metadata: Metadata = {
   title: 'Modelos de sites',
   description:
-    'Explore modelos navegáveis para 14 categorias. Escolha entre os estilos minimalista, moderno e premium e personalize seu projeto.',
+    'Explore 39 modelos em 13 categorias e três experiências Premium. Compare, personalize e prepare seu projeto.',
 };
 export default async function Models({
   searchParams,
@@ -15,22 +15,22 @@ export default async function Models({
   const data = await catalog(),
     params = await searchParams;
   return (
-    <main id="conteudo" className="wrap catalog-bottom">
+    <main id="conteudo" className="wrap catalog-bottom showroom-page">
       <div className="page-intro">
         <div className="breadcrumbs">
           <Link href="/">Início</Link>
           <span>/</span>
           <span>Modelos</span>
         </div>
-        <span className="eyebrow">SEU NEGÓCIO, SEU PONTO DE PARTIDA</span>
+        <span className="eyebrow">O SHOWROOM NEXO · 42 POSSIBILIDADES</span>
         <h1>
-          Um modelo.
+          Uma presença à altura
           <br />
-          <span className="muted">Infinitas possibilidades.</span>
+          <span className="muted">da sua próxima ideia.</span>
         </h1>
         <p>
-          Explore, navegue e imagine. Encontre uma direção visual e transforme cada detalhe em algo
-          seu.
+          Explore 39 modelos para o seu negócio e três experiências Premium. Compare suas escolhas e
+          transforme cada detalhe em algo seu.
         </p>
       </div>
       {data.error ? (

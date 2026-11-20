@@ -1,30 +1,20 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { templates, defaultConfig } from '@/lib/catalog';
-import { SitePreview } from '@/components/site-preview';
-export const metadata = { title: 'Demonstração navegável', robots: { index: false, follow: true } };
+import { demoTemplates, routeTemplate } from '@/lib/template-routes';
+import { DemoView } from '@/components/demo-view';
 export const dynamicParams = false;
 export function generateStaticParams() {
-  return templates.map((t) => ({ slug: t.slug }));
+  return demoTemplates.map((t) => ({ slug: t.slug }));
+}
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const t = routeTemplate((await params).slug);
+  return {
+    title: t ? t.name + ' — Demonstração' : 'Modelo indisponível',
+    description: t?.description,
+    robots: { index: false, follow: true },
+  };
 }
 export default async function Demo({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const template = templates.find((t) => t.slug === slug);
-  if (!template) notFound();
-  return (
-    <main id="conteudo">
-      <div className="demo-banner">
-        <div>
-          <Link href="/modelos">Voltar aos modelos</Link>
-          <span> · {template.name} · Demonstração navegável</span>
-        </div>
-        <Link className="button button-small" href={`/studio/${template.slug}`}>
-          Personalizar este modelo
-        </Link>
-      </div>
-      <div className="demo-container">
-        <SitePreview template={template} config={defaultConfig(template)} />
-      </div>
-    </main>
-  );
+  const t = routeTemplate((await params).slug);
+  if (!t) notFound();
+  return <DemoView template={t} />;
 }

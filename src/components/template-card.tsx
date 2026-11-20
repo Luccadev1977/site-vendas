@@ -1,72 +1,132 @@
+/* eslint-disable @next/next/no-img-element -- Small local WebP thumbnails, native lazy loading, no server optimizer on Pages. */
 import Link from 'next/link';
-import { Eye, SlidersHorizontal } from 'lucide-react';
+import { Eye, SlidersHorizontal, Gem, Plus, Check } from 'lucide-react';
 import type { Template } from '@/lib/domain';
+import { money } from '@/lib/domain';
+import { isPremium, basePrice, styleLabels } from '@/lib/catalog';
+import { assetPath } from '@/lib/deployment';
 export function TemplateArtwork({ template }: { template: Template }) {
+  const t = template,
+    scene = t.content.scene || 'business';
   return (
     <div
-      className={`template-art art-${template.style}`}
-      style={{ '--art-accent': template.accent } as React.CSSProperties}
+      className={`showroom-art art-${t.style} art-scene-${scene} art-layout-${t.content.layout || 'split'}`}
+      style={
+        {
+          '--art-accent': t.accent,
+          '--art-bg': t.content.background || '#131b22',
+        } as React.CSSProperties
+      }
       aria-hidden="true"
     >
-      <div className="art-nav">
+      <div className="showroom-art-nav">
         <b>
-          {template.content.company || template.name}
-          <span>®</span>
+          {t.content.company || t.name}
+          <sup>®</sup>
         </b>
-        <span>Sobre&nbsp;&nbsp; Serviços&nbsp;&nbsp; Contato</span>
+        <span>Sobre &nbsp; Coleção &nbsp; Contato</span>
       </div>
-      <div className="art-body">
-        <div className="art-copy">
-          <small>
-            {template.style === 'premium' ? 'THE SIGNATURE COLLECTION' : 'FEITO COM PROPÓSITO'}
-          </small>
-          <strong>{template.description}</strong>
-          <span className="art-cta">Descubra sua próxima possibilidade</span>
+      <div className="showroom-art-content">
+        <div>
+          <small>{isPremium(t) ? 'THE SIGNATURE COLLECTION' : t.content.slogan}</small>
+          <strong>{t.description}</strong>
+          <span className="art-small-cta">{t.content.cta || 'Conheça as possibilidades'}</span>
         </div>
-        <div className="art-image">
-          <div className="art-orbit" />
-          <div className="art-pillar" />
-          <div className="art-pillar second" />
-          <span>EST. 2026</span>
-        </div>
+        <img
+          loading="lazy"
+          decoding="async"
+          width="550"
+          height="420"
+          src={assetPath(t.content.heroImage || '/images/architecture.svg')}
+          alt=""
+        />
       </div>
-      <div className="art-bottom">
-        <span>Estratégia & essência</span>
-        <span>Uma nova perspectiva</span>
+      <div className="showroom-art-bottom">
+        <span>
+          {scene === 'restaurant'
+            ? 'COZINHA DA ESTAÇÃO'
+            : scene === 'commerce'
+              ? 'OBJETOS & MATÉRIA'
+              : 'DESIGN COM INTENÇÃO'}
+        </span>
+        <span>Explore a experiência</span>
       </div>
     </div>
   );
 }
-export function TemplateCard({ template, category }: { template: Template; category?: string }) {
+export function TemplatePrice({ template }: { template: Template }) {
+  const price = basePrice(template);
   return (
-    <article className="template-card">
+    <span className="template-price">
+      {price ? `A partir de ${money(price)}` : 'Sob consulta'}
+      {price && <small>Estimativa inicial · orçamento final sob análise</small>}
+    </span>
+  );
+}
+export function TemplateCard({
+  template,
+  category,
+  selected,
+  onCompare,
+}: {
+  template: Template;
+  category?: string;
+  selected?: boolean;
+  onCompare?: (t: Template) => void;
+}) {
+  const premium = isPremium(template);
+  return (
+    <article
+      className={`template-card showroom-card ${premium ? 'is-premium' : ''}`}
+      data-template={template.slug}
+    >
       <Link
+        prefetch={false}
         className="template-cover"
         href={`/demo/${template.slug}`}
-        aria-label={`Explorar demonstração ${template.name}`}
+        aria-label={`Visualizar demonstração ${template.name}`}
       >
         <TemplateArtwork template={template} />
         <span className="cover-action">
-          <Eye size={17} /> Explorar demonstração
+          <Eye size={17} />
+          Visualizar demonstração
         </span>
+        {premium && (
+          <span className="premium-seal">
+            <Gem size={13} /> PREMIUM
+          </span>
+        )}
       </Link>
       <div className="template-meta">
         <div>
-          <span className="eyebrow subtle">{category || 'Modelo de site'}</span>
+          <span className="eyebrow subtle">
+            {category || template.category_name || 'Modelo de site'}
+          </span>
           <h3>{template.name}</h3>
         </div>
-        <span className="style-tag">{template.style}</span>
+        <span className="style-tag">{styleLabels[template.style]}</span>
       </div>
+      <p className="template-description">{template.description}</p>
+      <TemplatePrice template={template} />
       <div className="template-card-actions">
-        <span className="palette-dots">
-          <i style={{ background: template.accent }} />
-          <i />
-          <i />
-        </span>
-        <Link href={`/studio/${template.slug}`}>
+        <Link prefetch={false} href={`/demo/${template.slug}`}>
+          <Eye size={15} />
+          Visualizar
+        </Link>
+        <Link prefetch={false} href={`/studio/${template.slug}`}>
           <SlidersHorizontal size={15} />
           Personalizar
         </Link>
+        {onCompare && (
+          <button
+            aria-label={`Comparar ${template.name}`}
+            aria-pressed={!!selected}
+            onClick={() => onCompare(template)}
+          >
+            {selected ? <Check size={15} /> : <Plus size={15} />}
+            <span>Comparar</span>
+          </button>
+        )}
       </div>
     </article>
   );

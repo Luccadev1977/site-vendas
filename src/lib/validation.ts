@@ -7,7 +7,7 @@ const image = z
   .refine(
     (v) =>
       !v ||
-      /^\/images\/[a-z-]+\.svg$/.test(v) ||
+      /^\/images\/[a-z-]+\.(svg|webp)$/.test(v) ||
       /^\/api\/files\/[0-9a-f-]{36}\?inline=1$/.test(v) ||
       /^\/api\/catalog-assets\/[0-9a-f-]{36}\.(jpg|png|webp)$/.test(v),
     'Imagem inválida.',
@@ -21,6 +21,8 @@ export const configSchema = z
     secondary: color,
     background: color,
     buttonColor: color,
+    textColor: color.optional(),
+    highlight: color.optional(),
     font: z.enum(['sans', 'serif', 'mono']),
     radius: z.number().int().min(0).max(32),
     title: short.min(1, 'Informe o título.'),
@@ -35,12 +37,21 @@ export const configSchema = z
     logo: image,
     heroImage: image,
     images: z.array(image).max(12),
-    sections: z.array(z.enum(['sobre', 'servicos', 'galeria', 'depoimentos', 'contato'])).max(5),
+    sections: z
+      .array(z.enum(['sobre', 'servicos', 'galeria', 'depoimentos', 'equipe', 'faq', 'contato']))
+      .max(7),
     features: z.array(short).max(30),
     pages: z.number().int().min(1).max(100),
     notes: z.string().max(8000),
   })
   .strict();
+const localImage = z.union([image, z.string().regex(/^local-image:[0-9a-f-]{36}$/)]);
+// Only the browser-local editor accepts image identifiers; the server schema never does.
+export const localConfigSchema = configSchema.extend({
+  logo: localImage,
+  heroImage: localImage,
+  images: z.array(localImage).max(12),
+});
 export const briefSchema = z
   .object({
     name: short.min(3, 'Informe seu nome completo.'),
@@ -150,12 +161,22 @@ export const commandSchema = z.discriminatedUnion('action', [
       slug: z.string().regex(/^[a-z0-9-]{2,100}$/),
       name: short.min(2),
       category_id: uuid,
-      style: z.enum(['minimalista', 'moderno', 'premium']),
+      style: z.enum(['minimalista', 'moderno', 'elegante', 'premium']),
       description: z.string().max(1000),
       accent: color,
       featured: z.boolean(),
       active: z.boolean(),
-      content: z.record(z.string(), z.string().max(2000)),
+      content: z
+        .record(z.string(), z.string().max(2000))
+        .refine(
+          (c) =>
+            (!c.tier || ['premium', 'conventional'].includes(c.tier)) &&
+            (!c.basePriceCents ||
+              (/^\d+$/.test(c.basePriceCents) &&
+                Number(c.basePriceCents) >= 100 &&
+                Number(c.basePriceCents) <= 100000000)),
+          'Classificação ou preço-base inválido.',
+        ),
     }),
   }),
   z.object({

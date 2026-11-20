@@ -10,15 +10,18 @@ O objetivo é permitir que clientes escolham e personalizem uma direção visual
 
 ## Estado de configuração
 
-O código inclui frontend, APIs, autenticação Supabase, migrations, RLS e o fluxo comercial. **O workflow publica a versão estática no GitHub Pages. O projeto Supabase e os serviços externos ainda precisam ser configurados para a versão completa com servidor.** No Pages, funcionam o catálogo demonstrativo, as demonstrações navegáveis e o estúdio com rascunho no dispositivo. Contas, uploads, pedidos e painéis exigem a versão com servidor e o banco configurado; não existem pedidos, clientes ou pagamentos simulados.
+O código inclui frontend, APIs, autenticação Supabase, migrations, RLS e o fluxo comercial. **O workflow publica a versão estática no GitHub Pages. O projeto Supabase e os serviços externos ainda precisam ser configurados para a versão completa com servidor.** No Pages, funcionam o catálogo demonstrativo, as demonstrações navegáveis e o estúdio com rascunho e imagens no dispositivo. Contas, uploads na nuvem, pedidos e painéis exigem a versão com servidor e o banco configurado; não existem pedidos, clientes ou pagamentos simulados.
 
 Foram executados testes SQL em PostgreSQL embarcado e testes de validação. A homologação integrada de Auth, Storage e SMTP no Supabase real continua pendente. Consulte [a evidência de verificação](docs/verification.md).
 
 ## Funcionalidades
 
 - Homepage, benefícios, processo, FAQ, SEO, sitemap, robots, Open Graph, termos e privacidade.
-- 14 categorias, 42 modelos iniciais e três composições de página distintas: minimalista, moderno e premium. Navegação por seções, conteúdo específico do nicho e interações demonstrativas identificadas.
-- Estúdio: identidade, conteúdo, imagens, estrutura, desktop/tablet/celular, rascunho local e na conta, restauração com aviso, feedback ao salvar e exportação JSON versionada.
+- 13 categorias com três estilos convencionais (Minimalista, Moderno, Elegante): 39 modelos, mais Luxury Business, Digital Experience e Signature Commerce. Exatamente 42 itens, três classificados como Premium. Composições próprias por segmento e coleção, com conteúdo fictício identificado.
+- Catálogo com miniaturas WebP locais, filtros por categoria/estilo/coleção, busca imediata, ordenação e comparação de até três modelos.
+- Estúdio com oito ferramentas, seis cores, paletas, combinações tipográficas, edição de texto pela prévia, sete seções, funcionalidades solicitadas, desfazer/refazer, tela cheia, revisão e prévias desktop/tablet/celular.
+- Rascunhos locais automáticos e imagens no IndexedDB com confirmação visual; exportação/importação JSON com imagens para outro dispositivo. Na versão com servidor, continuam disponíveis rascunhos na conta e uploads privados.
+- Preços e classificação editáveis no painel da versão completa. Valores ainda não definidos aparecem como “Sob consulta”. Preços-base Premium devem superar os convencionais configurados, com validação na interface e no banco. Veja [o showroom e os limites do Pages](docs/showroom.md).
 - Solicitação validada com briefing completo, anexos privados, personalizações e número único. Repetir o envio do mesmo projeto não cria outro pedido.
 - Cadastro, confirmação de e-mail, login, recuperação de senha e logout.
 - Painel do cliente: projetos, rascunhos, propostas, pagamentos, arquivos, conversas e histórico.

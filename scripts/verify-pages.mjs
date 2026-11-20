@@ -2,7 +2,15 @@ import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { templates } from '../src/lib/catalog.ts';
+import { templates, seedTemplates, categories, isPremium } from '../src/lib/catalog.ts';
+assert.equal(templates.length, 42, 'Catalog must contain exactly 42 entries');
+assert.equal(categories.length, 13, 'Catalog must contain 13 categories');
+assert.equal(
+  seedTemplates.filter(isPremium).length,
+  3,
+  'Seed collection must contain exactly three Premium models',
+);
+assert.equal(new Set(templates.map((t) => t.slug)).size, 42, 'Catalog slugs must be unique');
 const output = fileURLToPath(new URL('../out/', import.meta.url)),
   prefix = '/site-vendas';
 async function exists(relative) {

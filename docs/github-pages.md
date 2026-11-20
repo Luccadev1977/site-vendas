@@ -18,11 +18,14 @@ Na compilação Pages, `NEXT_PUBLIC_DEPLOY_TARGET=github-pages` ativa `output: '
 ## Recursos publicados
 
 - Homepage, catálogo com filtros, 42 demonstrações navegáveis e 42 estúdios pré-gerados.
-- Identidade, conteúdo, seções e imagens demonstrativas com prévia desktop/tablet/celular.
-- Rascunho no dispositivo e exportação JSON da configuração ou da solicitação preenchida.
+- 39 modelos convencionais em 13 categorias e três Premium, com busca, filtros, ordenação e comparação de até três modelos.
+- Oito ferramentas, seis cores, paletas, tipografia, imagens locais, sete seções, desfazer/refazer, revisão e prévia desktop/tablet/celular.
+- Rascunho no dispositivo e exportação/importação JSON da configuração com imagens, além da exportação da solicitação preenchida.
 - Termos, privacidade, informações sobre esta versão e página 404.
 
 GitHub Pages não executa um servidor Node.js. APIs `POST`, cookies de autenticação SSR, proxy, uploads privados, pedidos no banco, mensagens, propostas, Pix e administração não são executados por esta publicação. O código completo está preservado para uso futuro com um servidor. As rotas `/conta`, `/painel` e `/admin` apresentam essa informação, sem simular login, pagamentos ou dados privados. Nenhuma chave Supabase é necessária para o workflow e nenhuma credencial de backend deve ser adicionada ao artefato estático.
+
+Imagens selecionadas no estúdio estático são armazenadas somente no IndexedDB do navegador. Não são uploads privados nem ficam no servidor do GitHub. A transferência entre dispositivos é por exportação/importação JSON. Preços públicos podem ser publicados pelo snapshot `public/catalog-settings.json`, exportado no painel da versão completa; veja [o roteiro do showroom](showroom.md).
 
 ## Configuração do GitHub
 

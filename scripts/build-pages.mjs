@@ -33,6 +33,7 @@ await cp(path.join(root, 'public'), path.join(staging, 'public'), { recursive: t
 for (const file of [
   'layout.tsx',
   'globals.css',
+  'showroom.css',
   'not-found.tsx',
   'error.tsx',
   'loading.tsx',

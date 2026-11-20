@@ -1,28 +1,24 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { catalog } from '@/lib/data';
-import { defaultConfig } from '@/lib/catalog';
-import { SitePreview } from '@/components/site-preview';
-export const metadata = { title: 'Demonstração navegável', robots: { index: false, follow: true } };
-export default async function Demo({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params,
-    data = await catalog(),
-    template = data.templates.find((t) => t.slug === slug);
-  if (!template) notFound();
+import { routeTemplate } from '@/lib/template-routes';
+import { DemoView } from '@/components/demo-view';
+import { cache } from 'react';
+const find = cache(async (slug: string) => {
+  const data = await catalog();
   return (
-    <main id="conteudo">
-      <div className="demo-banner">
-        <div>
-          <Link href="/modelos">Voltar aos modelos</Link>
-          <span> · {template.name} · Demonstração navegável</span>
-        </div>
-        <Link className="button button-small" href={`/studio/${template.slug}`}>
-          Personalizar este modelo
-        </Link>
-      </div>
-      <div className="demo-container">
-        <SitePreview template={template} config={defaultConfig(template)} />
-      </div>
-    </main>
+    data.templates.find((t) => t.slug === slug) || (data.local ? routeTemplate(slug) : undefined)
   );
+});
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const t = await find((await params).slug);
+  return {
+    title: t ? t.name + ' — Demonstração' : 'Modelo indisponível',
+    description: t?.description,
+    robots: { index: false, follow: true },
+  };
+}
+export default async function Demo({ params }: { params: Promise<{ slug: string }> }) {
+  const t = await find((await params).slug);
+  if (!t) notFound();
+  return <DemoView template={t} />;
 }

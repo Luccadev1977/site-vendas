@@ -25,10 +25,15 @@ export function PagesNotice() {
           Contas e dados privados
         </h2>
         <p>
-          Login, painel administrativo, pedidos, mensagens, uploads e pagamentos dependem de um
-          servidor e da configuração do Supabase. O código dessas funções está preservado no
+          Login, painel administrativo, pedidos, mensagens, uploads na nuvem e pagamentos dependem
+          de um servidor e da configuração do Supabase. O código dessas funções está preservado no
           repositório para utilização futura. Este endereço não recebe senhas, comprovantes ou
           pagamentos.
+        </p>
+        <p>
+          Imagens escolhidas no estúdio ficam no seu navegador, em IndexedDB. A exportação JSON
+          inclui essas imagens; importe o arquivo no estúdio do mesmo modelo para continuar em outro
+          dispositivo.
         </p>
       </div>
       <Link href="/modelos" className="button">

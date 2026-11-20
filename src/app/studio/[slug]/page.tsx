@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
+import { routeTemplate } from '@/lib/template-routes';
 import { catalog } from '@/lib/data';
 import { session } from '@/lib/supabase/server';
 import { Studio } from '@/components/studio';
@@ -28,7 +29,8 @@ export default async function StudioPage({
     template = initialProject.template_snapshot;
   } else {
     const data = await catalog();
-    template = data.templates.find((t) => t.slug === slug);
+    template =
+      data.templates.find((t) => t.slug === slug) || (data.local ? routeTemplate(slug) : undefined);
   }
   if (!template) notFound();
   return (

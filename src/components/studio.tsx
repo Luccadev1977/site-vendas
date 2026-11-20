@@ -1,6 +1,6 @@
 'use client';
 /* eslint-disable @next/next/no-img-element -- Local vectors and authenticated private images in the editor. */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useReducer } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -19,21 +19,36 @@ import {
   Download,
   Cloud,
   RotateCcw,
+  Undo2,
+  Redo2,
+  Maximize2,
+  Minimize2,
+  PanelLeftClose,
+  Building2,
+  Sparkles,
+  BriefcaseBusiness,
+  ListChecks,
+  Upload,
 } from 'lucide-react';
 import type { z } from 'zod';
 import type { Project, SiteConfig, Template } from '@/lib/domain';
-import { defaultConfig } from '@/lib/catalog';
-import { briefSchema, configSchema } from '@/lib/validation';
+import { defaultConfig, isPremium, styleLabels } from '@/lib/catalog';
+import { briefSchema, configSchema, localConfigSchema } from '@/lib/validation';
 import { command, upload } from '@/lib/api-client';
 import { SitePreview } from './site-preview';
 import { Field, downloadJSON } from './form-ui';
 import { isGitHubPages, assetPath } from '@/lib/deployment';
+import { editorHistory } from '@/lib/editor-history';
+import { storeImage, imageData } from '@/lib/local-images';
+import { PreviewImage } from './preview-image';
 
 const sections = [
   ['sobre', 'Sobre a empresa'],
   ['servicos', 'Serviços / soluções'],
   ['galeria', 'Galeria de imagens'],
   ['depoimentos', 'Depoimentos'],
+  ['equipe', 'Equipe'],
+  ['faq', 'Perguntas frequentes'],
   ['contato', 'Contato'],
 ];
 const features = [
@@ -45,10 +60,14 @@ const features = [
   ['integracoes', 'Integrações externas'],
 ];
 const tabs = [
-  ['identidade', 'Identidade', Palette],
-  ['conteudo', 'Conteúdo', Type],
+  ['identidade', 'Identidade', Building2],
+  ['cores', 'Cores', Palette],
+  ['tipografia', 'Tipografia', Type],
+  ['conteudo', 'Textos', ListChecks],
   ['imagens', 'Imagens', ImageIcon],
-  ['estrutura', 'Estrutura', Layers3],
+  ['secoes', 'Seções', Layers3],
+  ['funcionalidades', 'Funcionalidades', Sparkles],
+  ['comercial', 'Informações comerciais', BriefcaseBusiness],
 ] as const;
 
 export function Studio({
@@ -61,9 +80,37 @@ export function Studio({
   initialProject?: Project;
 }) {
   const router = useRouter();
-  const [config, setConfig] = useState<SiteConfig>(
-    initialProject?.config || defaultConfig(template),
+  const [history, dispatch] = useReducer(editorHistory, {
+    past: [],
+    present: initialProject?.config || defaultConfig(template),
+    future: [],
+  });
+  const config = history.present;
+  const setConfig = (value: SiteConfig | ((c: SiteConfig) => SiteConfig)) =>
+    dispatch({ type: 'change', value });
+  const [toolsOpen, setToolsOpen] = useState(true),
+    [fullScreen, setFullScreen] = useState(false),
+    [reviewing, setReviewing] = useState(true);
+  const [imageCandidate, setImageCandidate] = useState<{
+    file: File;
+    target: 'logo' | 'heroImage' | 'images';
+    url: string;
+  } | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
+  const [pastedProject, setPastedProject] = useState('');
+  useEffect(
+    () => () => {
+      if (imageCandidate) URL.revokeObjectURL(imageCandidate.url);
+    },
+    [imageCandidate],
   );
+  useEffect(() => {
+    const exit = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFullScreen(false);
+    };
+    window.addEventListener('keydown', exit);
+    return () => window.removeEventListener('keydown', exit);
+  }, []);
   const [tab, setTab] = useState('identidade'),
     [device, setDevice] = useState('desktop'),
     [projectId, setProjectId] = useState(initialProject?.id || ''),
@@ -97,14 +144,15 @@ export function Studio({
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem(key) || 'null');
-      const parsed = configSchema.safeParse(stored?.config);
+      const parsed = (isGitHubPages ? localConfigSchema : configSchema).safeParse(stored?.config);
       if (
         parsed.success &&
         (!initialProject || new Date(stored.savedAt) > new Date(initialProject.updated_at))
       ) {
         // Synchronize the React editor with a persisted external draft once on mount.
+        dispatch({ type: 'load', value: parsed.data });
+        // Hydrate the editor once from an external persisted draft.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setConfig(parsed.data);
         setLocalSaved(true);
         if (stored.owner === userId && stored.id) setProjectId(stored.id);
       }
@@ -218,8 +266,17 @@ export function Studio({
     setPending(true);
     setError('');
     try {
-      if (!file.type.startsWith('image/'))
-        throw new Error('Selecione uma imagem PNG, JPEG ou WebP.');
+      if (
+        !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
+        file.size > 4 * 1024 * 1024
+      )
+        throw new Error('Use PNG, JPEG ou WebP de até 4 MB.');
+      if (isGitHubPages) {
+        const url = await storeImage(file);
+        update(target, target === 'images' ? [...config.images, url].slice(0, 12) : url);
+        setMessage('Imagem salva somente neste navegador. Exporte o projeto para transportá-la.');
+        return;
+      }
       const id = await persist();
       const result = await upload(id, file, 'asset');
       const url = `/api/files/${result.id}?inline=1`;
@@ -236,9 +293,11 @@ export function Studio({
     setError('');
     try {
       if (isGitHubPages) {
+        const assets = await collectAssets();
         downloadJSON(
           {
-            version: 1,
+            version: 2,
+            assets,
             template,
             config,
             brief: briefSchema.parse(brief),
@@ -268,6 +327,108 @@ export function Studio({
       setPending(false);
     }
   }
+  async function collectAssets() {
+    const ids = [config.logo, config.heroImage, ...config.images].filter((v) =>
+      v.startsWith('local-image:'),
+    );
+    return Object.fromEntries(
+      await Promise.all([...new Set(ids)].map(async (id) => [id, await imageData(id)])),
+    );
+  }
+  async function exportProject() {
+    try {
+      (isGitHubPages ? localConfigSchema : configSchema).parse(config);
+      downloadJSON(
+        { version: 2, template, config, assets: await collectAssets() },
+        'meu-projeto-nexo.json',
+      );
+      setMessage('Projeto exportado com as imagens locais.');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function importProject(file: File | undefined) {
+    if (!file) return;
+    try {
+      if (file.size > 90 * 1024 * 1024) throw new Error('Arquivo muito grande. Limite de 90 MB.');
+      const bundle = JSON.parse(await file.text());
+      if (bundle.template?.slug !== template.slug)
+        throw new Error(
+          'Abra o estúdio do modelo ' +
+            (bundle.template?.name || 'original') +
+            ' para importar este projeto.',
+        );
+      const parsed = (isGitHubPages ? localConfigSchema : configSchema).parse(bundle.config);
+      const ids = [
+        ...new Set(
+          [parsed.logo, parsed.heroImage, ...parsed.images].filter((v) =>
+            v.startsWith('local-image:'),
+          ),
+        ),
+      ];
+      for (const id of ids) {
+        const data = bundle.assets?.[id];
+        if (
+          typeof data !== 'string' ||
+          data.length > 6 * 1024 * 1024 ||
+          !/^data:image\/(png|jpeg|webp);base64,/.test(data)
+        )
+          throw new Error('Imagem local ausente ou inválida no arquivo.');
+        const encoded = data.slice(data.indexOf(',') + 1),
+          decoded = atob(encoded);
+        const blob = new Blob([Uint8Array.from(decoded, (c) => c.charCodeAt(0))], {
+          type: data.slice(5, data.indexOf(';')),
+        });
+        if (blob.size > 4 * 1024 * 1024) throw new Error('Imagem acima de 4 MB.');
+        await storeImage(blob, id);
+      }
+      setConfig(parsed);
+      setLocalSaved(false);
+      setCloudSaved(false);
+      dirty.current = true;
+      setMessage('Projeto importado. O rascunho será salvo neste navegador.');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  function chooseImage(file: File | undefined, target: 'logo' | 'heroImage' | 'images') {
+    if (!file) return;
+    if (target === 'images' && config.images.length >= 12) {
+      setError('A galeria aceita até 12 imagens. Remova uma antes de adicionar outra.');
+      return;
+    }
+    if (
+      !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
+      file.size > 4 * 1024 * 1024
+    ) {
+      setError('Use PNG, JPEG ou WebP de até 4 MB.');
+      return;
+    }
+    setImageCandidate({ file, target, url: URL.createObjectURL(file) });
+  }
+  function openReview() {
+    setError('');
+    form.setValue('company', config.company);
+    form.setValue('email', config.email);
+    form.setValue('phone', config.phone);
+    setReviewing(true);
+    setModal(true);
+  }
+  function undoRedo(type: 'undo' | 'redo') {
+    dispatch({ type });
+    setLocalSaved(false);
+    setCloudSaved(false);
+    setCloudSaved(false);
+    dirty.current = true;
+  }
+  function editPreview(field: keyof SiteConfig) {
+    const next = field === 'company' || field === 'slogan' ? 'identidade' : 'conteudo';
+    setTab(next);
+    setToolsOpen(true);
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLInputElement>('[data-config-field="' + field + '"]')?.focus(),
+    );
+  }
   const input = (
     label: string,
     key:
@@ -285,6 +446,7 @@ export function Studio({
     <Field label={label}>
       <input
         type={type}
+        data-config-field={key}
         value={config[key]}
         maxLength={key === 'address' ? 500 : 200}
         onChange={(e) => update(key, e.target.value)}
@@ -293,20 +455,56 @@ export function Studio({
   );
   const progress = [
     config.company !== defaultConfig(template).company,
+    config.primary !== defaultConfig(template).primary ||
+      config.background !== defaultConfig(template).background,
+    config.font !== defaultConfig(template).font,
     config.title !== defaultConfig(template).title,
     config.description !== defaultConfig(template).description,
-    config.notes.length > 0,
+    config.notes.length > 0 ||
+      JSON.stringify(config.features) !== JSON.stringify(defaultConfig(template).features),
   ].filter(Boolean).length;
   return (
-    <main id="conteudo">
+    <main
+      id="conteudo"
+      className={`studio-workspace ${fullScreen ? 'studio-fullscreen' : ''} ${!toolsOpen ? 'tools-collapsed' : ''}`}
+    >
       <div className="studio-top">
         <div>
           <h1>
-            Estúdio de personalização <span className="muted">/ {template.name}</span>
+            {config.company} <span className="muted">/ {template.name}</span>
           </h1>
-          <p>Sua ideia, em tempo real. O desenvolvimento final começa após a aprovação.</p>
+          <p>
+            ESTÚDIO NEXO · {isPremium(template) ? 'COLEÇÃO PREMIUM' : styleLabels[template.style]} ·
+            Prévia ao vivo
+          </p>
         </div>
         <div className="inline-actions">
+          <button
+            className="icon-button"
+            aria-label="Desfazer"
+            title="Desfazer"
+            disabled={!history.past.length || pending}
+            onClick={() => undoRedo('undo')}
+          >
+            <Undo2 size={17} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Refazer"
+            title="Refazer"
+            disabled={!history.future.length || pending}
+            onClick={() => undoRedo('redo')}
+          >
+            <Redo2 size={17} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label={fullScreen ? 'Sair da tela cheia' : 'Visualizar em tela cheia'}
+            title="Tela cheia"
+            onClick={() => setFullScreen(!fullScreen)}
+          >
+            {fullScreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          </button>
           <button
             className="icon-button"
             aria-label="Restaurar modelo"
@@ -349,35 +547,54 @@ export function Studio({
             className="icon-button"
             aria-label="Exportar configuração JSON"
             title="Exportar configuração"
-            onClick={() => downloadJSON({ template, config }, 'meu-projeto-nexo.json')}
+            onClick={exportProject}
           >
             <Download size={16} />
           </button>
           <button className="button button-outline button-small" onClick={save} disabled={pending}>
             {isGitHubPages ? 'Salvar no dispositivo' : 'Salvar rascunho'}
           </button>
-          <button
-            className="button button-small"
-            disabled={pending}
-            onClick={() => {
-              setError('');
-              form.setValue('company', config.company);
-              form.setValue('email', config.email);
-              form.setValue('phone', config.phone);
-              setModal(true);
-            }}
-          >
+          <button className="button button-small" disabled={pending} onClick={openReview}>
             Solicitar orçamento
           </button>
         </div>
       </div>
+      <nav className="studio-journey" aria-label="Etapas do projeto">
+        <Link href="/modelos">Escolher modelo</Link>
+        {[
+          ['identidade', 'Definir identidade'],
+          ['conteudo', 'Personalizar conteúdo'],
+          ['funcionalidades', 'Selecionar funcionalidades'],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            className={tab === id ? 'active' : ''}
+            onClick={() => {
+              setTab(id);
+              setToolsOpen(true);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+        <button onClick={openReview}>Revisar projeto</button>
+        <span>Solicitação {isGitHubPages ? 'em JSON' : ''}</span>
+      </nav>
+      <button
+        className="studio-panel-toggle"
+        aria-expanded={toolsOpen}
+        onClick={() => setToolsOpen(!toolsOpen)}
+      >
+        <PanelLeftClose size={16} />
+        {toolsOpen ? 'Recolher ferramentas' : 'Abrir ferramentas'}
+      </button>
       <div className="studio-shell">
         <aside className="studio-sidebar">
           <div
             className="progress-track"
-            aria-label={`${Math.round((progress / 4) * 100)}% dos campos principais personalizados`}
+            aria-label={`${Math.round((progress / 6) * 100)}% dos grupos principais personalizados`}
           >
-            <span style={{ width: `${Math.max(8, (progress / 4) * 100)}%` }} />
+            <span style={{ width: `${Math.max(8, (progress / 6) * 100)}%` }} />
           </div>
           <div className="studio-tabs" role="tablist" aria-label="Áreas de personalização">
             {tabs.map(([id, label, Icon]) => (
@@ -401,7 +618,7 @@ export function Studio({
               style={{ marginBottom: 18 }}
             >
               {error || message}
-              {!userId && error && (
+              {!userId && !isGitHubPages && error && (
                 <>
                   {' '}
                   <Link href={`/conta?next=${encodeURIComponent(`/studio/${template.slug}`)}`}>
@@ -423,33 +640,6 @@ export function Studio({
               <>
                 {input('Nome da empresa', 'company')}
                 {input('Slogan', 'slogan')}
-                <div className="color-grid">
-                  {[
-                    ['Cor principal', 'primary'],
-                    ['Cor secundária', 'secondary'],
-                    ['Fundo', 'background'],
-                    ['Botões', 'buttonColor'],
-                  ].map(([label, key]) => (
-                    <Field key={key} label={label}>
-                      <input
-                        type="color"
-                        aria-label={label}
-                        value={config[key as 'primary']}
-                        onChange={(e) => update(key as 'primary', e.target.value)}
-                      />
-                    </Field>
-                  ))}
-                </div>
-                <Field label="Tipografia">
-                  <select
-                    value={config.font}
-                    onChange={(e) => update('font', e.target.value as SiteConfig['font'])}
-                  >
-                    <option value="sans">Moderna · Sans serif</option>
-                    <option value="serif">Editorial · Serifada</option>
-                    <option value="mono">Técnica · Monoespaçada</option>
-                  </select>
-                </Field>
                 <Field label={`Arredondamento · ${config.radius}px`}>
                   <input
                     type="range"
@@ -460,9 +650,98 @@ export function Studio({
                   />
                 </Field>
                 <p className="studio-help">
-                  {isGitHubPages
-                    ? 'Uploads de logotipo exigem a versão com servidor.'
-                    : 'Seu logotipo pode ser enviado na aba Imagens.'}
+                  Escolha a essência da sua marca. Clique em um texto da prévia para editá-lo aqui.
+                </p>
+              </>
+            )}
+            {tab === 'cores' && (
+              <>
+                <h2 className="tool-heading">Uma paleta, sua identidade.</h2>
+                <p className="studio-help">Escolha uma combinação ou ajuste cada cor.</p>
+                <div className="palette-presets">
+                  {[
+                    ['Botânico', '#638377', '#e5eee7', '#f5f4ec', '#25382e'],
+                    ['Noturno', '#8da7ff', '#b5bbd0', '#131b22', '#f4f6fb'],
+                    ['Terracota', '#b47650', '#a69483', '#f4ede4', '#35291f'],
+                    ['Elétrico', '#a4ff9b', '#92b7fa', '#101811', '#edf8ec'],
+                  ].map(([name, primary, secondary, background, text]) => (
+                    <button
+                      key={name}
+                      title={name}
+                      aria-label={`Aplicar paleta ${name}`}
+                      onClick={() => {
+                        setConfig((c) => ({
+                          ...c,
+                          primary,
+                          secondary,
+                          background,
+                          textColor: text,
+                          highlight: primary,
+                          buttonColor: primary,
+                        }));
+                        setLocalSaved(false);
+                        dirty.current = true;
+                      }}
+                    >
+                      <span>
+                        {[primary, secondary, background, text].map((v, i) => (
+                          <i key={i} style={{ background: v }} />
+                        ))}
+                      </span>
+                      {name}
+                    </button>
+                  ))}
+                </div>
+                <div className="color-grid">
+                  {[
+                    ['Cor principal', 'primary'],
+                    ['Cor secundária', 'secondary'],
+                    ['Fundo', 'background'],
+                    ['Textos', 'textColor'],
+                    ['Botões', 'buttonColor'],
+                    ['Destaque', 'highlight'],
+                  ].map(([label, key]) => (
+                    <Field key={key} label={label}>
+                      <input
+                        type="color"
+                        value={config[key as 'primary'] || '#f4f6fb'}
+                        onChange={(e) => update(key as 'primary', e.target.value)}
+                      />
+                    </Field>
+                  ))}
+                </div>
+              </>
+            )}
+            {tab === 'tipografia' && (
+              <>
+                <h2 className="tool-heading">Dê voz à sua marca.</h2>
+                <div className="font-options">
+                  {[
+                    ['sans', 'Contemporânea', 'Segoe UI + Arial', 'Clara. Direta. Versátil.'],
+                    ['serif', 'Editorial', 'Georgia + Segoe UI', 'Elegância em cada palavra.'],
+                    ['mono', 'Digital', 'Consolas + Arial', 'Precisão com personalidade.'],
+                  ].map(([id, name, pair, line]) => (
+                    <button
+                      key={id}
+                      aria-pressed={config.font === id}
+                      className={config.font === id ? 'active' : ''}
+                      onClick={() => update('font', id as SiteConfig['font'])}
+                    >
+                      <small>{pair}</small>
+                      <strong
+                        style={{
+                          fontFamily:
+                            id === 'serif' ? 'Georgia' : id === 'mono' ? 'Consolas' : 'Segoe UI',
+                        }}
+                      >
+                        {name}
+                      </strong>
+                      <span>{line}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="studio-help">
+                  Fontes de sistema: carregamento imediato, sem serviços externos.
                 </p>
               </>
             )}
@@ -472,6 +751,7 @@ export function Studio({
                 {input('Subtítulo', 'subtitle')}
                 <Field label="Sobre o negócio">
                   <textarea
+                    data-config-field="description"
                     value={config.description}
                     maxLength={4000}
                     onChange={(e) => update('description', e.target.value)}
@@ -485,6 +765,10 @@ export function Studio({
                   />
                 </Field>
                 {input('Texto do botão', 'cta')}
+              </>
+            )}
+            {tab === 'comercial' && (
+              <>
                 {input('E-mail de contato', 'email', 'email')}
                 {input('WhatsApp com código do país', 'phone', 'tel')}
                 {input('Endereço', 'address')}
@@ -495,8 +779,8 @@ export function Studio({
               <>
                 <p className="studio-help">
                   {isGitHubPages
-                    ? 'Escolha uma composição ilustrativa. Uploads privados e logotipos exigem a versão com servidor; esta publicação não recebe arquivos.'
-                    : 'Escolha uma composição ilustrativa ou envie suas imagens. Uploads privados exigem uma conta e rascunho salvo. PNG, JPEG ou WebP, até 4 MB.'}
+                    ? 'Imagens ficam somente neste navegador. PNG, JPEG ou WebP, até 4 MB. A exportação inclui suas imagens para levar o projeto a outro dispositivo.'
+                    : 'Pré-visualize suas imagens antes de enviar. Uploads privados exigem conta e rascunho salvo. PNG, JPEG ou WebP, até 4 MB.'}
                 </p>
                 <div className="image-options">
                   {['architecture', 'sculpture', 'abstract'].map((img) => (
@@ -519,21 +803,39 @@ export function Studio({
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
-                      disabled={pending || isGitHubPages}
+                      disabled={pending}
                       onChange={(e) => {
-                        imageUpload(e.target.files?.[0], target as 'logo');
+                        chooseImage(e.target.files?.[0], target as 'logo');
                         e.target.value = '';
                       }}
                     />
                   </label>
                 ))}
+                {imageCandidate && (
+                  <div className="image-confirm">
+                    <img src={imageCandidate.url} alt="Prévia da imagem selecionada" />
+                    <p>
+                      {imageCandidate.file.name} · {(imageCandidate.file.size / 1024).toFixed(0)} KB
+                    </p>
+                    <div className="inline-actions">
+                      <button
+                        className="button button-small"
+                        onClick={async () => {
+                          await imageUpload(imageCandidate.file, imageCandidate.target);
+                          setImageCandidate(null);
+                        }}
+                      >
+                        Usar esta imagem
+                      </button>
+                      <button className="text-button" onClick={() => setImageCandidate(null)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {config.logo && (
                   <Field label="Logotipo selecionado">
-                    <img
-                      src={assetPath(config.logo)}
-                      alt="Logotipo selecionado"
-                      style={{ maxHeight: 70, objectFit: 'contain' }}
-                    />
+                    <PreviewImage src={config.logo} alt="Logotipo selecionado" />
                     <button
                       className="button button-outline button-small"
                       onClick={() => update('logo', '')}
@@ -554,13 +856,13 @@ export function Studio({
                         )
                       }
                     >
-                      <img src={assetPath(src)} alt={`Galeria ${i + 1} — clique para remover`} />
+                      <PreviewImage src={src} alt={`Galeria ${i + 1} — clique para remover`} />
                     </button>
                   ))}
                 </div>
               </>
             )}
-            {tab === 'estrutura' && (
+            {tab === 'secoes' && (
               <>
                 <Field label="Quantidade de páginas">
                   <input
@@ -584,6 +886,10 @@ export function Studio({
                     </label>
                   ))}
                 </div>
+              </>
+            )}
+            {tab === 'funcionalidades' && (
+              <>
                 <div className="studio-checkboxes">
                   <span className="studio-help">FUNCIONALIDADES SOLICITADAS</span>
                   {features.map(([id, label]) => (
@@ -612,6 +918,48 @@ export function Studio({
               </>
             )}
           </fieldset>
+          <div className="studio-import">
+            <button className="text-button" onClick={() => importInput.current?.click()}>
+              <Upload size={15} />
+              Importar projeto JSON
+            </button>
+            <input
+              ref={importInput}
+              type="file"
+              hidden
+              accept="application/json,.json"
+              onChange={(e) => {
+                importProject(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+            <p>
+              Trocar de tela preserva a edição. Para outro dispositivo, exporte e importe o JSON.
+            </p>
+            <details className="paste-project">
+              <summary>Ou colar projeto JSON</summary>
+              <Field label="Conteúdo do projeto JSON">
+                <textarea
+                  value={pastedProject}
+                  onChange={(e) => setPastedProject(e.target.value)}
+                  maxLength={90 * 1024 * 1024}
+                  placeholder="Cole aqui o conteúdo do arquivo exportado"
+                />
+              </Field>
+              <button
+                className="text-button"
+                disabled={!pastedProject.trim()}
+                onClick={async () => {
+                  await importProject(
+                    new File([pastedProject], 'projeto.json', { type: 'application/json' }),
+                  );
+                  setPastedProject('');
+                }}
+              >
+                Aplicar projeto JSON
+              </button>
+            </details>
+          </div>
         </aside>
         <section className="studio-preview-area" aria-label="Prévia ao vivo">
           <div className="preview-toolbar">
@@ -649,7 +997,7 @@ export function Studio({
               <span>✦</span>
             </div>
             <div className="preview-scroll">
-              <SitePreview config={config} template={template} />
+              <SitePreview config={config} template={template} onEdit={editPreview} />
             </div>
           </div>
           <p className="preview-note">
@@ -675,9 +1023,11 @@ export function Studio({
               <h2 id="brief-dialog-title">
                 {confirmation
                   ? 'Seu projeto chegou.'
-                  : isGitHubPages
-                    ? 'Leve sua ideia com você.'
-                    : 'Conte um pouco mais.'}
+                  : reviewing
+                    ? 'Seu projeto, em perspectiva.'
+                    : isGitHubPages
+                      ? 'Leve sua ideia com você.'
+                      : 'Conte um pouco mais.'}
               </h2>
               <p>
                 {confirmation
@@ -708,6 +1058,91 @@ export function Studio({
               <Link className="button" href={`/painel/projetos/${confirmation.id}`}>
                 Acompanhar meu projeto
               </Link>
+            </div>
+          ) : reviewing ? (
+            <div className="review-panel">
+              <p>Confira suas escolhas antes de preparar a solicitação.</p>
+              <dl>
+                {[
+                  ['Modelo', template.name],
+                  ['Coleção', isPremium(template) ? 'Premium' : 'Convencional'],
+                  ['Projeto', config.company],
+                  ['Título', config.title],
+                  ['Slogan', config.slogan || 'Não informado'],
+                  ['Subtítulo', config.subtitle || 'Não informado'],
+                  ['Sobre o negócio', config.description],
+                  ['Serviços', config.services.join(', ')],
+                  ['Botão principal', config.cta],
+                  [
+                    'Contato',
+                    [config.email, config.phone, config.address, config.instagram]
+                      .filter(Boolean)
+                      .join(' · ') || 'Não informado',
+                  ],
+                  ['Arredondamento', `${config.radius}px`],
+                  [
+                    'Imagens',
+                    `${config.logo ? 'Logotipo · ' : ''}Imagem principal · ${config.images.length} na galeria`,
+                  ],
+                  [
+                    'Tipografia',
+                    config.font === 'serif'
+                      ? 'Editorial'
+                      : config.font === 'mono'
+                        ? 'Digital'
+                        : 'Contemporânea',
+                  ],
+                  [
+                    'Seções',
+                    config.sections
+                      .map((s) => sections.find((v) => v[0] === s)?.[1] || s)
+                      .join(', '),
+                  ],
+                  [
+                    'Funcionalidades',
+                    config.features
+                      .map((s) => features.find((v) => v[0] === s)?.[1] || s)
+                      .join(', ') || 'Nenhuma adicional',
+                  ],
+                  ['Páginas solicitadas', String(config.pages)],
+                  ['Observações', config.notes || 'Nenhuma'],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <PreviewImage
+                className="review-image"
+                src={config.heroImage}
+                alt="Imagem principal escolhida"
+              />
+              <div className="review-swatches">
+                {[
+                  config.primary,
+                  config.secondary,
+                  config.background,
+                  config.textColor,
+                  config.buttonColor,
+                  config.highlight,
+                ].map((v, i) => (
+                  <span key={i} style={{ background: v }} title={v} />
+                ))}
+              </div>
+              <p className="notice">
+                {isGitHubPages
+                  ? 'Esta publicação prepara um JSON com suas escolhas. Nenhum pedido, pagamento ou mensagem será enviado.'
+                  : 'A proposta final será preparada após análise. Nenhum valor é cobrado nesta etapa.'}
+              </p>
+              <div className="inline-actions">
+                <button className="button" onClick={() => setReviewing(false)}>
+                  Continuar para os detalhes
+                </button>
+                <button className="text-button" onClick={() => setModal(false)}>
+                  Voltar à edição
+                </button>
+              </div>
             </div>
           ) : !userId && !isGitHubPages ? (
             <div className="form-stack">
