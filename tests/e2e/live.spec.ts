@@ -47,7 +47,7 @@ test('connected commercial workflow, private receipt, manual confirmation and is
     await expect(client.getByText('Rascunho salvo na sua conta.')).toBeVisible();
     await client.reload();
     await expect(client.getByLabel('Nome da empresa', { exact: true })).toHaveValue(name);
-    await client.getByRole('button', { name: 'Solicitar orçamento', exact: true }).click();
+    await client.getByRole('button', { name: 'Enviar o pedido', exact: true }).click();
     await client.getByRole('button', { name: 'Continuar para os detalhes', exact: true }).click();
     const form = client.getByRole('dialog');
     await form.getByLabel('Nome completo', { exact: true }).fill('Cliente de homologação');
@@ -58,7 +58,7 @@ test('connected commercial workflow, private receipt, manual confirmation and is
       .getByLabel('Finalidade do projeto', { exact: true })
       .fill('Homologar o fluxo comercial em ambiente de testes.');
     await form.getByRole('checkbox').check();
-    await form.getByRole('button', { name: 'Enviar meu projeto para análise' }).click();
+    await form.getByRole('button', { name: 'Enviar o pedido' }).click();
     const href = await client
       .getByRole('link', { name: 'Acompanhar meu projeto' })
       .getAttribute('href');

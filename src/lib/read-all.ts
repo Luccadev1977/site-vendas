@@ -1,4 +1,3 @@
-import 'server-only';
 type RangeSource = {
   range(
     from: number,

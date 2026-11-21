@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { refreshData, projectHref } from '@/lib/browser-platform';
 import { useState } from 'react';
 import {
   BarChart3,
@@ -34,10 +35,16 @@ import { Field, downloadJSON } from './form-ui';
 import { isPremium, basePrice, styleLabels } from '@/lib/catalog';
 import { Logout, Notifications, Refresh, StatusBadge } from './dashboard';
 import { PublicImageUpload } from './content-manager';
-function catalogTemplate(item:Template|Category|Testimonial):item is Template{return 'category_id' in item && 'content' in item;}
+import { WhatsAppSettingsForm } from './whatsapp-settings';
+import { isGitHubPages } from '@/lib/deployment';
+import { routeWithoutBasePath } from '@/lib/deployment';
+import { csvCell } from '@/lib/csv';
+function catalogTemplate(item: Template | Category | Testimonial): item is Template {
+  return 'category_id' in item && 'content' in item;
+}
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const pathname = routeWithoutBasePath(usePathname()).replace(/\/$/, '');
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
@@ -144,10 +151,7 @@ export function AdminOverview({
         ],
       ]
     : [
-        [
-          'Clientes cadastrados',
-          profiles.filter((p) => new Date(p.created_at).getTime() >= since).length,
-        ],
+        ['Total de pedidos recebidos', selected.length],
         ['Pedidos novos', selected.filter((p) => p.status === 'received').length],
         [
           'Aguardando análise',
@@ -195,6 +199,34 @@ export function AdminOverview({
     };
   });
   const max = Math.max(...months.map((m) => m.amount), 1);
+  function exportCSV() {
+    const records = [
+      ['Número', 'Projeto', 'Valor BRL', 'Status', 'Criado em', 'Confirmado em'],
+      ...payments
+        .filter((p) => new Date(p.confirmed_at || p.created_at).getTime() >= since)
+        .map((p) => {
+          const project = projects.find((v) => v.id === p.project_id);
+          return [
+            project?.number,
+            project?.name,
+            (p.amount / 100).toFixed(2),
+            p.status,
+            p.created_at,
+            p.confirmed_at || '',
+          ];
+        }),
+    ];
+    const url = URL.createObjectURL(
+      new Blob(['\uFEFF' + records.map((row) => row.map(csvCell).join(';')).join('\r\n')], {
+        type: 'text/csv;charset=utf-8',
+      }),
+    );
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nexo-financeiro.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   return (
     <main id="conteudo">
       <Refresh />
@@ -222,15 +254,21 @@ export function AdminOverview({
           <option value="90">Últimos 90 dias</option>
           <option value="365">Últimos 12 meses</option>
         </select>
-        {financial && (
-          <a
-            className="button button-outline button-small"
-            href={`/api/admin/export?days=${period}`}
-          >
-            <Download size={15} />
-            Exportar CSV
-          </a>
-        )}
+        {financial &&
+          (isGitHubPages ? (
+            <button className="button button-outline button-small" onClick={exportCSV}>
+              <Download size={15} />
+              Exportar CSV
+            </button>
+          ) : (
+            <a
+              className="button button-outline button-small"
+              href={`/api/admin/export?days=${period}`}
+            >
+              <Download size={15} />
+              Exportar CSV
+            </a>
+          ))}
         <span className="studio-help">Atualização automática a cada 20 segundos.</span>
       </div>
       {!orders && (
@@ -291,7 +329,7 @@ export function AdminOverview({
                   .map((pay) => (
                     <tr key={pay.id}>
                       <td>
-                        <Link href={`/admin/pedidos/${pay.project_id}`}>
+                        <Link href={projectHref(pay.project_id, true)}>
                           {projects.find((p) => p.id === pay.project_id)?.name}
                         </Link>
                       </td>
@@ -366,7 +404,7 @@ export function AdminOverview({
                     </td>
                     <td>{date(p.created_at)}</td>
                     <td>
-                      <Link href={`/admin/pedidos/${p.id}`}>Abrir projeto</Link>
+                      <Link href={projectHref(p.id, true)}>Abrir projeto</Link>
                     </td>
                   </tr>
                 ))}
@@ -411,7 +449,8 @@ export function AdminSettings({
       <div className="panel settings-form">
         <div className="panel-title">
           <div>
-            <h2>Recebimento via Pix</h2>
+            <span className="eyebrow">CONFIGURAÇÕES · PAGAMENTOS</span>
+            <h2>Pix</h2>
             <p>A chave só fica visível ao cliente depois da aprovação da proposta.</p>
           </div>
           <ShieldCheck size={23} />
@@ -438,6 +477,7 @@ export function AdminSettings({
               await command({
                 action: 'settings',
                 payload: {
+                  key_type: String(f.get('key_type')) as NonNullable<PixSettings['key_type']>,
                   key: String(f.get('key')),
                   beneficiary: String(f.get('beneficiary')),
                   bank: String(f.get('bank')),
@@ -445,7 +485,7 @@ export function AdminSettings({
                 },
               });
               setSuccess('Dados Pix atualizados.');
-              router.refresh();
+              refreshData(router);
             } catch (e) {
               setError((e as Error).message);
             } finally {
@@ -453,6 +493,15 @@ export function AdminSettings({
             }
           }}
         >
+          <Field label="Tipo de chave Pix">
+            <select name="key_type" defaultValue={initial?.key_type || 'random'}>
+              <option value="cpf">CPF</option>
+              <option value="cnpj">CNPJ</option>
+              <option value="email">E-mail</option>
+              <option value="phone">Telefone</option>
+              <option value="random">Chave aleatória</option>
+            </select>
+          </Field>
           {[
             ['key', 'Chave Pix'],
             ['beneficiary', 'Nome do beneficiário'],
@@ -483,6 +532,7 @@ export function AdminSettings({
           </button>
         </form>
       </div>
+      <WhatsAppSettingsForm />
       <div className="panel" style={{ marginTop: 25 }}>
         <div className="panel-title">
           <h2>Auditoria administrativa</h2>
@@ -504,7 +554,7 @@ export function AdminSettings({
                   <td>{a.action}</td>
                   <td>
                     {a.project_id ? (
-                      <Link href={`/admin/pedidos/${a.project_id}`}>Abrir projeto</Link>
+                      <Link href={projectHref(a.project_id, true)}>Abrir projeto</Link>
                     ) : (
                       'Configuração'
                     )}
@@ -628,7 +678,7 @@ export function AdminCatalog({
       }
       await command(input);
       setEditing(null);
-      router.refresh();
+      refreshData(router);
     } catch (e) {
       setError((e as Error).message);
     } finally {

@@ -74,6 +74,16 @@ export const briefSchema = z
 const uuid = z.uuid();
 export const commandSchema = z.discriminatedUnion('action', [
   z.object({
+    action: z.literal('whatsapp'),
+    payload: z
+      .object({
+        phone: z.string().regex(/^(55\d{10,11})?$/, 'Use 55, DDD e número, sem símbolos.'),
+        message: z.string().trim().min(1).max(1000),
+        enabled: z.boolean(),
+      })
+      .refine((p) => !p.enabled || !!p.phone, 'Cadastre um número válido antes de ativar.'),
+  }),
+  z.object({
     action: z.literal('portfolio'),
     payload: z.object({
       id: uuid,
@@ -142,6 +152,7 @@ export const commandSchema = z.discriminatedUnion('action', [
       beneficiary: short.min(1),
       bank: short.min(1),
       instructions: z.string().max(4000),
+      key_type: z.enum(['cpf', 'cnpj', 'email', 'phone', 'random']).optional(),
     }),
   }),
   z.object({

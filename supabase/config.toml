@@ -1,0 +1,4 @@
+project_id = "nexo-studio"
+
+[functions.finalize-upload]
+verify_jwt = true

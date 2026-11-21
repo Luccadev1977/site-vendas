@@ -7,8 +7,8 @@ export function PagesNotice() {
       <h1>Sua ideia começa por aqui.</h1>
       <p>
         Esta publicação oferece o catálogo completo, as demonstrações navegáveis e o estúdio de
-        personalização. Você pode salvar um rascunho neste navegador e baixar a configuração ou uma
-        solicitação em JSON.
+        personalização. Você pode salvar um rascunho neste navegador, exportar sua configuração e
+        entrar na conta para enviar um pedido e acompanhar a proposta.
       </p>
       <div className="panel" style={{ marginBlock: 30 }}>
         <h2 style={{ marginTop: 0 }}>
@@ -16,19 +16,19 @@ export function PagesNotice() {
           dispositivo
         </h2>
         <p>
-          Suas alterações são salvas no armazenamento local do navegador. O JSON é baixado por você
-          e pode incluir os dados preenchidos no formulário. Nenhum pedido é enviado por esta
-          versão.
+          Rascunhos e imagens locais permitem experimentar antes de entrar na conta. Exportar o
+          projeto salva uma cópia no seu dispositivo. Para solicitar atendimento, use Enviar o
+          pedido; a confirmação só aparece depois que o pedido é registrado na sua conta.
         </p>
         <h2>
           <ShieldCheck size={20} style={{ display: 'inline', marginRight: 10 }} />
           Contas e dados privados
         </h2>
         <p>
-          Login, painel administrativo, pedidos, mensagens, uploads na nuvem e pagamentos dependem
-          de um servidor e da configuração do Supabase. O código dessas funções está preservado no
-          repositório para utilização futura. Este endereço não recebe senhas, comprovantes ou
-          pagamentos.
+          Contas, pedidos, mensagens e arquivos utilizam o Supabase com acesso restrito. O cliente
+          acompanha somente os próprios pedidos; o administrador analisa solicitações e envia
+          propostas. Se a integração estiver indisponível, o site informa o problema sem confirmar
+          um pedido. O Pix é liberado após aprovar a proposta e o pagamento é conferido manualmente.
         </p>
         <p>
           Imagens escolhidas no estúdio ficam no seu navegador, em IndexedDB. A exportação JSON

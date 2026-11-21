@@ -28,6 +28,21 @@ async function as(uid: string | null, role = 'authenticated') {
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [uid || '']);
 }
 async function cmd(action: string, payload: unknown) {
+  if (action === 'register_file') {
+    // This test helper represents the trusted Edge boundary after byte validation.
+    const current = await db.query<{ id: string }>('select auth.uid()::text as id');
+    const actor = current.rows[0].id;
+    await as(null, 'service_role');
+    try {
+      const r = await db.query<{ result: Record<string, unknown> }>(
+        'select public.finalize_file($1,$2::jsonb) as result',
+        [actor, JSON.stringify(payload)],
+      );
+      return r.rows[0].result;
+    } finally {
+      await as(actor);
+    }
+  }
   const r = await db.query<{ result: Record<string, unknown> }>(
     'select public.command($1,$2::jsonb) as result',
     [action, JSON.stringify(payload)],
@@ -82,6 +97,7 @@ beforeAll(async () => {
   await db.exec(await readFile('supabase/migrations/20261119172528_initial_catalog.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261119175055_managed_content.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261120145745_showroom_catalog.sql', 'utf8'));
+  await db.exec(await readFile('supabase/migrations/20261121171055_static_orders.sql', 'utf8'));
   for (const [id, email, verified] of [
     [owner, 'owner@example.test', true],
     [other, 'other@example.test', true],
@@ -106,6 +122,67 @@ afterAll(async () => {
 });
 
 describe('Transactional project workflow — real PostgreSQL SQL', () => {
+  it('blocks client attestation of uploaded files and direct privileged bypasses', async () => {
+    await expect(db.query("select public.command('register_file','{}')")).rejects.toThrow(
+      /Edge Function/,
+    );
+    await expect(
+      db.query("select private.execute_command('read_notifications','{}')"),
+    ).rejects.toThrow(/permission denied/);
+    await expect(db.query("select public.finalize_file($1,'{}')", [owner])).rejects.toThrow(
+      /permission denied/,
+    );
+    await expect(db.query("select private.finalize_file($1,'{}')", [owner])).rejects.toThrow(
+      /permission denied/,
+    );
+    await as(null, 'anon');
+    await expect(db.query("select public.finalize_file($1,'{}')", [owner])).rejects.toThrow(
+      /permission denied/,
+    );
+  });
+  it('exposes only public WhatsApp settings and reserves changes for the confirmed administrator', async () => {
+    const value = {
+      phone: '5511999990000',
+      message: 'Olá! Tenho interesse no modelo {modelo}.',
+      enabled: true,
+    };
+    await expect(cmd('whatsapp', value)).rejects.toThrow(/administrador/);
+    await expect(db.query('update public.site_settings set enabled=false')).rejects.toThrow(
+      /permission denied/,
+    );
+    await as(admin);
+    await cmd('whatsapp', value);
+    await as(null, 'anon');
+    const settings = await rows('site_settings');
+    expect(settings[0]).toMatchObject(value);
+    expect(settings[0]).not.toHaveProperty('pix');
+    await expect(db.query('select * from private.settings')).rejects.toThrow(/permission denied/);
+    await as(admin);
+    await cmd('whatsapp', { ...value, enabled: false });
+    expect((await rows('site_settings'))[0].enabled).toBe(false);
+    await expect(cmd('whatsapp', { ...value, phone: '123' })).rejects.toThrow(/check constraint/);
+  });
+  it('persists Pix key type and rejects invalid types', async () => {
+    await as(admin);
+    await cmd('settings', {
+      key: 'pix@example.test',
+      key_type: 'email',
+      beneficiary: 'Nexo Teste',
+      bank: 'Banco Teste',
+      instructions: 'Conferir beneficiário.',
+    });
+    const result = await db.query<{ pix: { key_type: string } }>('select public.get_pix() as pix');
+    expect(result.rows[0].pix.key_type).toBe('email');
+    await expect(
+      cmd('settings', {
+        key: 'x',
+        key_type: 'invalid',
+        beneficiary: 'Nexo Teste',
+        bank: 'Banco Teste',
+        instructions: '',
+      }),
+    ).rejects.toThrow(/Pix/);
+  });
   it('enforces configurable Premium pricing through authenticated RPC and blocks non-admin changes', async () => {
     const standard = templates.find((t) => t.content.tier === 'conventional')!,
       premium = templates.find((t) => t.content.tier === 'premium')!;

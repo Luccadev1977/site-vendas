@@ -10,7 +10,7 @@ O objetivo é permitir que clientes escolham e personalizem uma direção visual
 
 ## Estado de configuração
 
-O código inclui frontend, APIs, autenticação Supabase, migrations, RLS e o fluxo comercial. **O workflow publica a versão estática no GitHub Pages. O projeto Supabase e os serviços externos ainda precisam ser configurados para a versão completa com servidor.** No Pages, funcionam o catálogo demonstrativo, as demonstrações navegáveis e o estúdio com rascunho e imagens no dispositivo. Contas, uploads na nuvem, pedidos e painéis exigem a versão com servidor e o banco configurado; não existem pedidos, clientes ou pagamentos simulados.
+A publicação no GitHub Pages usa Supabase Auth, Data API com RLS e Storage privado diretamente pelo navegador, somente com URL e chave publicável. Pedidos, propostas, mensagens, painéis e Pix funcionam nessa arquitetura depois de aplicar as migrations, configurar Auth e publicar a Edge Function `finalize-upload`. O Pages não executa APIs Next.js. A versão com servidor está preservada. Não existem pedidos, clientes, pagamentos ou números de atendimento simulados.
 
 Foram executados testes SQL em PostgreSQL embarcado e testes de validação. A homologação integrada de Auth, Storage e SMTP no Supabase real continua pendente. Consulte [a evidência de verificação](docs/verification.md).
 
@@ -21,7 +21,7 @@ Foram executados testes SQL em PostgreSQL embarcado e testes de validação. A h
 - Catálogo com miniaturas WebP locais, filtros por categoria/estilo/coleção, busca imediata, ordenação e comparação de até três modelos.
 - Estúdio com oito ferramentas, seis cores, paletas, combinações tipográficas, edição de texto pela prévia, sete seções, funcionalidades solicitadas, desfazer/refazer, tela cheia, revisão e prévias desktop/tablet/celular.
 - Rascunhos locais automáticos e imagens no IndexedDB com confirmação visual; exportação/importação JSON com imagens para outro dispositivo. Na versão com servidor, continuam disponíveis rascunhos na conta e uploads privados.
-- Preços e classificação editáveis no painel da versão completa. Valores ainda não definidos aparecem como “Sob consulta”. Preços-base Premium devem superar os convencionais configurados, com validação na interface e no banco. Veja [o showroom e os limites do Pages](docs/showroom.md).
+- Preços e classificação editáveis no painel administrativo. Valores ainda não definidos aparecem como “Sob consulta”. Preços-base Premium devem superar os convencionais configurados, com validação na interface e no banco. Veja [o showroom e os limites do Pages](docs/showroom.md).
 - Solicitação validada com briefing completo, anexos privados, personalizações e número único. Repetir o envio do mesmo projeto não cria outro pedido.
 - Cadastro, confirmação de e-mail, login, recuperação de senha e logout.
 - Painel do cliente: projetos, rascunhos, propostas, pagamentos, arquivos, conversas e histórico.
@@ -78,6 +78,8 @@ O CLI pede autenticação/confirmação do alvo remoto. Não coloque tokens ou a
 1. `supabase/migrations/20261119172527_core_platform.sql`
 2. `supabase/migrations/20261119172528_initial_catalog.sql`
 3. `supabase/migrations/20261119175055_managed_content.sql`
+4. `supabase/migrations/20261120145745_showroom_catalog.sql`
+5. `supabase/migrations/20261121171055_static_orders.sql`
 
 **Não use os dois métodos no mesmo banco sem reconciliar o histórico de migrations.** Os testes locais aplicam esses mesmos arquivos em PostgreSQL, com schemas `auth` e `storage` mínimos para testar as políticas. O Storage e o Auth gerenciados precisam ser homologados no Supabase real.
 
@@ -90,7 +92,7 @@ O CLI pede autenticação/confirmação do alvo remoto. Não coloque tokens ou a
 No Supabase Authentication:
 
 - Ative o provedor de e-mail e a confirmação de e-mail. **Desative logins anônimos.** Configure senha mínima de 12 caracteres e as proteções e limites do serviço.
-- Em URL Configuration, informe a Site URL canônica e autorize `http://127.0.0.1:3000/auth/confirm**` para desenvolvimento e `https://SEU_DOMINIO/auth/confirm**` em produção. Use um projeto separado para testes e previews.
+- Em URL Configuration, use Site URL `https://luccadev1977.github.io/site-vendas/` e autorize `https://luccadev1977.github.io/site-vendas/conta/**` para o callback estático (incluindo parâmetros). Para a versão Node, autorize `http://127.0.0.1:3000/auth/confirm**`. Use projeto separado para testes.
 - Configure SMTP próprio para os e-mails de autenticação. Os campos SMTP da aplicação abaixo são para notificações de projetos, não substituem o SMTP do Auth.
 - Em Email Templates, use links por token hash. A aplicação envia `.RedirectTo` contendo `?next=...`; por isso os parâmetros abaixo são adicionados com `&amp;`.
 
@@ -115,7 +117,7 @@ A rota também aceita o callback PKCE com `code`. O destino é validado como cam
 1. Cadastre sua própria conta pela aplicação e confirme o e-mail.
 2. Em Authentication → Users, copie o UUID dessa conta.
 3. Abra `supabase/bootstrap-admin.sql`, substitua o UUID sentinela pelo seu UUID e execute no SQL Editor como proprietário do projeto.
-4. Entre novamente e acesse `/admin`. Cadastre os dados Pix em `/admin/configuracoes`.
+4. Entre novamente em `/site-vendas/admin/`. Cadastre tipo de chave, chave, beneficiário, banco e instruções em **Configurações → Pagamentos → Pix**. Configure seu WhatsApp comercial na mesma tela, com 55 e sem símbolos, e ative o botão. O número inicial é vazio e o botão fica desativado.
 
 Não há conta administrativa automática, senha padrão nem autorização baseada em `user_metadata`. A tabela `private.administrator` permite exatamente uma conta. A inicialização falha se já existir administrador. Para uma transferência de administração, o operador deve verificar a nova conta e alterar essa tabela pelo SQL Editor; não há endpoint público para isso.
 
@@ -129,14 +131,14 @@ Enviar comprovante muda o pagamento para `review`, nunca para confirmado. Soment
 
 Notificações internas funcionam com o banco. Eventos também entram em `private.email_outbox`, sem expor comprovantes, chave Pix ou briefing por e-mail.
 
-| Variável somente no servidor | Uso                                                               |
-| ---------------------------- | ----------------------------------------------------------------- |
-| `SUPABASE_SERVICE_ROLE_KEY`  | Worker de e-mails. Nenhuma API comercial utiliza essa credencial. |
-| `SMTP_HOST`, `SMTP_PORT`     | Provedor e porta SMTP.                                            |
-| `SMTP_SECURE`                | `true` para TLS direto; `false` para STARTTLS obrigatório.        |
-| `SMTP_USER`, `SMTP_PASSWORD` | Credenciais do provedor.                                          |
-| `MAIL_FROM`                  | Remetente verificado no provedor.                                 |
-| `CRON_SECRET`                | Segredo aleatório forte para autorizar o worker.                  |
+| Variável somente no servidor | Uso                                                                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SUPABASE_SERVICE_ROLE_KEY`  | Worker de e-mails, somente no servidor. A Edge Function usa a credencial injetada pelo Supabase após verificar usuário e bytes do arquivo. |
+| `SMTP_HOST`, `SMTP_PORT`     | Provedor e porta SMTP.                                                                                                                     |
+| `SMTP_SECURE`                | `true` para TLS direto; `false` para STARTTLS obrigatório.                                                                                 |
+| `SMTP_USER`, `SMTP_PASSWORD` | Credenciais do provedor.                                                                                                                   |
+| `MAIL_FROM`                  | Remetente verificado no provedor.                                                                                                          |
+| `CRON_SECRET`                | Segredo aleatório forte para autorizar o worker.                                                                                           |
 
 Um agendador de backend deve chamar `POST /api/internal/email` com `Authorization: Bearer <CRON_SECRET>`. O agendador **não foi provisionado**. Cada execução reserva até cinco e-mails por dez minutos, com até cinco tentativas e `SKIP LOCKED` para concorrência. Erros não registram credenciais. A entrega é ao menos uma vez: uma interrupção depois do aceite pelo SMTP pode exigir reconciliação para evitar e-mail repetido. Use um provedor com política de idempotência se precisar dessa garantia adicional.
 
@@ -144,7 +146,7 @@ Não invoque esse endpoint em produção com dados fictícios. Configure e homol
 
 ## Segurança
 
-- Sessão verificada no servidor com `getUser`; o proxy renova cookies, mas não é a camada de autorização.
+- No Pages, sessão PKCE persistida pelo SDK, verificada com `getUser`, renovação automática e logout; RLS/RPC autorizam cada operação. Na versão Node, cookies SSR e proxy de renovação continuam disponíveis. Links de confirmação/recuperação são removidos da URL após leitura.
 - RLS em todas as tabelas públicas e privadas. Acesso de leitura por titularidade ou administrador.
 - Sem permissões diretas de `INSERT`, `UPDATE` ou `DELETE` nas tabelas comerciais para usuários. RPCs com validação no banco protegem também chamadas diretas à Data API.
 - Implementações privilegiadas em schema privado, `search_path` fixo, `EXECUTE` restrito e verificações explícitas de identidade/titularidade.
@@ -194,14 +196,14 @@ Não salve essas credenciais no Git nem use contas reais. O teste altera o Pix d
 
 ## Publicar no GitHub Pages
 
-O destino desta publicação é o GitHub Pages. Em **Settings → Pages → Source**, utilize **GitHub Actions**. Cada push em `main` aciona o workflow de instalação, lint, testes, exportação estática e publicação. Não é necessário configurar Vercel nem fornecer chaves Supabase para essa versão.
+O destino desta publicação é o GitHub Pages. Em **Settings → Pages → Source**, utilize **GitHub Actions**. Cada push em `main` aciona o workflow de instalação, lint, testes, exportação estática e publicação. Configure em **Settings → Secrets and variables → Actions → Variables** as duas variáveis públicas `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Somente chaves `sb_publishable_` são aceitas pelo build Pages; não adicione service_role ou secret key. Sem ambas, o showroom continua disponível e o envio fica desabilitado.
 
 ```powershell
 pnpm build:pages
 node scripts/verify-pages.mjs
 ```
 
-O artefato publicável fica em `out/`, com os recursos sob `/site-vendas`. APIs, autenticação e painéis privados permanecem nas fontes originais para uso futuro, mas não são executados no Pages. A solicitação preparada no estúdio estático é baixada em JSON, sem envio ao banco. Veja [os detalhes e a configuração](docs/github-pages.md).
+O artefato publicável fica em `out/`, com os recursos sob `/site-vendas`. As APIs Next.js ficam fora do artefato. As rotas estáticas de conta e painéis usam Supabase com RLS; detalhes de pedidos usam `/painel/projeto/?id=UUID` e `/admin/pedido/?id=UUID`. **Enviar o pedido** valida briefing e consentimento e executa transação SQL idempotente; só a resposta do banco com número único produz confirmação. JSON continua disponível para exportar/importar a personalização, sem substituir o envio. Veja [os detalhes e a configuração](docs/github-pages.md).
 
 ## Versão completa com backend, preservada para uso futuro
 
@@ -216,7 +218,7 @@ O comando `pnpm build` continua compilando a aplicação com servidor. Para exec
 5. Aplique migrations no projeto correto antes do primeiro acesso comercial. Rode os advisors, os testes conectados e o roteiro de homologação.
 6. Configure envio de e-mails e backups conforme sua operação; não foram criados serviços externos nesta entrega.
 
-Os uploads da versão completa têm limite de 4 MiB. Imagens públicas do portfólio usam `next/image`; imagens privadas da prévia usam a rota autenticada, pois o otimizador não recebe a sessão do cliente. Esses endpoints não são publicados no GitHub Pages.
+Os uploads da versão completa têm limite de 4 MiB. Imagens públicas do portfólio usam `next/image`; imagens privadas da prévia usam a rota autenticada, pois o otimizador não recebe a sessão do cliente. No Pages, IDs canônicos são resolvidos em URLs assinadas de curta duração via RLS, sem depender dessas APIs.
 
 ## Antes da operação comercial
 
@@ -233,3 +235,17 @@ supabase/bootstrap-admin.sql Inicialização manual segura do administrador
 tests/               Integração PostgreSQL, validação e E2E opt-in
 docs/                Arquitetura e evidências de verificação
 ```
+
+## Arquivos privados e função confiável
+
+Publique a função depois das migrations:
+
+```powershell
+pnpm exec supabase functions deploy finalize-upload --remote=SEU_PROJECT_REF --use-api
+```
+
+A função exige JWT de usuário (`verify_jwt=true`), e-mail confirmado, titularidade e inspeção real de bytes (PNG/JPEG/WebP/PDF, até 4 MiB). `register_file` não pode ser chamado diretamente pelo navegador; somente a função confiável executa `finalize_file`. O upload de comprovante produz revisão, nunca pagamento confirmado. Imagens públicas de catálogo exigem administrador. A service role é injetada pelo runtime Edge e nunca entra no GitHub Actions/Pages. `APP_ORIGINS` permite por padrão somente `https://luccadev1977.github.io`; para homologação local, configure explicitamente origens adicionais no ambiente Edge.
+
+As notificações internas estão no banco. E-mails comerciais exigem o worker/SMTP opcional descrito acima, que não é executado pelo Pages. A chave Pix fica no schema privado; apenas administrador e titular com proposta aprovada podem consultá-la. Não publique Pix no snapshot público de catálogo.
+
+O plano das cinco migrations, permissões e impacto está em [Migrations para revisão](docs/supabase-migrations.md). A aplicação no projeto remoto aguarda a revisão solicitada pelo proprietário.

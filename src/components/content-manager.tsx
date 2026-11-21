@@ -1,9 +1,12 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { refreshData } from '@/lib/browser-platform';
 import { command } from '@/lib/api-client';
 import type { Portfolio } from '@/lib/domain';
 import { Field } from './form-ui';
+import { isGitHubPages } from '@/lib/deployment';
+import { browserSupabase } from '@/lib/supabase/browser';
 export function PublicImageUpload({ onUpload }: { onUpload: (url: string) => void }) {
   const [pending, setPending] = useState(false),
     [error, setError] = useState('');
@@ -24,6 +27,18 @@ export function PublicImageUpload({ onUpload }: { onUpload: (url: string) => voi
             try {
               const body = new FormData();
               body.set('file', file);
+              if (isGitHubPages) {
+                const { data, error } = await browserSupabase().functions.invoke(
+                  'finalize-upload',
+                  { body },
+                );
+                if (error || data?.error)
+                  throw new Error(
+                    data?.error || 'Não foi possível validar a imagem. Confira a Edge Function.',
+                  );
+                onUpload(data.url);
+                return;
+              }
               const response = await fetch('/api/admin/assets', { method: 'POST', body });
               const data = await response.json();
               if (!response.ok) throw new Error(data.error);
@@ -91,7 +106,7 @@ export function ContentManager({ items }: { items: Portfolio[] }) {
                 },
               });
               setEditing(null);
-              router.refresh();
+              refreshData(router);
             } catch (e) {
               setError((e as Error).message);
             } finally {

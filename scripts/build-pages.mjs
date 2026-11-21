@@ -2,7 +2,27 @@ import { cp, mkdir, readFile, writeFile, rm, lstat } from 'node:fs/promises';
 import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { loadEnvConfig } = createRequire(require.resolve('next/package.json'))('@next/env');
 const root = fileURLToPath(new URL('../', import.meta.url));
+loadEnvConfig(root, false);
+const publicURL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const publicKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+if (Boolean(publicURL) !== Boolean(publicKey))
+  throw new Error('Configure as duas variáveis públicas do Supabase.');
+if (publicURL) {
+  const url = new URL(publicURL);
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publicKey)
+  )
+    throw new Error('Use uma URL HTTPS e somente a chave sb_publishable_ do Supabase.');
+}
 const staging = path.join(root, '.pages-build'),
   output = path.join(root, 'out');
 async function clearGenerated(target) {
@@ -34,6 +54,7 @@ for (const file of [
   'layout.tsx',
   'globals.css',
   'showroom.css',
+  'commerce.css',
   'not-found.tsx',
   'error.tsx',
   'loading.tsx',
@@ -74,9 +95,16 @@ const env = {
   ...process.env,
   NEXT_PUBLIC_DEPLOY_TARGET: 'github-pages',
   NEXT_PUBLIC_SITE_URL: 'https://luccadev1977.github.io/site-vendas',
-  NEXT_PUBLIC_SUPABASE_URL: '',
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: '',
+  NEXT_PUBLIC_SUPABASE_URL: publicURL,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publicKey,
 };
+for (const name of [
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_SECRET_KEY',
+  'SMTP_PASSWORD',
+  'CRON_SECRET',
+])
+  delete env[name];
 console.log(
   'Building isolated GitHub Pages export. Server routes and proxy are excluded; original sources are unchanged.',
 );

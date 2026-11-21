@@ -7,8 +7,8 @@ export default function Privacy() {
       <p className="notice">
         Na publicação estática do GitHub Pages, rascunhos ficam no localStorage e imagens escolhidas
         ficam no IndexedDB deste navegador. Exportações JSON podem conter suas imagens e dados de
-        contato. Não há envio de solicitações, login ou armazenamento no servidor por essa
-        publicação. Limpar os dados do navegador remove os rascunhos e imagens locais; exporte antes
+        contato. Ao entrar na conta e enviar um pedido, os dados e arquivos são armazenados no
+        Supabase, com acesso restrito ao cliente e ao administrador. Limpar os dados do navegador remove os rascunhos e imagens locais; exporte antes
         de trocar de dispositivo.
       </p>
       <p>

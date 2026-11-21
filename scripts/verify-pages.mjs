@@ -25,6 +25,11 @@ for (const file of [
   'conta/index.html',
   'painel/index.html',
   'admin/index.html',
+  'admin/pedidos/index.html',
+  'admin/pedido/index.html',
+  'admin/configuracoes/index.html',
+  'admin/financeiro/index.html',
+  'painel/projeto/index.html',
   'deployment.json',
   'social-preview.jpg',
 ])

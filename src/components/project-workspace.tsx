@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { refreshData } from '@/lib/browser-platform';
 import { Copy, Download, Paperclip, Send, Check, FileText, Eye } from 'lucide-react';
 import { command, upload } from '@/lib/api-client';
 import {
@@ -23,6 +24,9 @@ import { SitePreview } from './site-preview';
 import { Field, downloadJSON } from './form-ui';
 import { Refresh, StatusBadge } from './dashboard';
 import type { Command } from '@/lib/validation';
+import { isGitHubPages } from '@/lib/deployment';
+import { fileURL } from '@/lib/browser-platform';
+import { isPremium, styleLabels } from '@/lib/catalog';
 
 const transitions: Partial<Record<Status, Status[]>> = {
   received: ['analysis', 'needs_information', 'rejected', 'cancelled'],
@@ -65,7 +69,8 @@ export function ProjectWorkspace({
     [pending, setPending] = useState(false),
     [error, setError] = useState(''),
     [success, setSuccess] = useState(''),
-    [copied, setCopied] = useState(false);
+    [copied, setCopied] = useState(false),
+    [decision, setDecision] = useState<'rejected' | 'needs_information' | null>(null);
   const quote = quotes.find((q) => q.status !== 'declined'),
     payment = payments[0];
   async function act(input: Command, successMessage = 'Alteração registrada.') {
@@ -75,7 +80,7 @@ export function ProjectWorkspace({
     try {
       await command(input);
       setSuccess(successMessage);
-      router.refresh();
+      refreshData(router);
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -95,7 +100,7 @@ export function ProjectWorkspace({
           ? 'Comprovante enviado. O pagamento aguarda verificação manual.'
           : 'Arquivo enviado com segurança.',
       );
-      router.refresh();
+      refreshData(router);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -174,6 +179,70 @@ export function ProjectWorkspace({
                       <p>Decisões registradas no histórico e notificadas ao cliente.</p>
                     </div>
                   </div>
+                  {['received', 'analysis', 'needs_information'].includes(p.status) && (
+                    <div className="order-decisions">
+                      <button
+                        className="button button-outline"
+                        disabled={pending}
+                        onClick={() => setDecision('rejected')}
+                      >
+                        Recusar pedido
+                      </button>
+                      <button
+                        className="button button-outline"
+                        disabled={pending || p.status === 'needs_information'}
+                        onClick={() => setDecision('needs_information')}
+                      >
+                        Solicitar informações
+                      </button>
+                    </div>
+                  )}
+                  {decision && (
+                    <form
+                      className="form-stack decision-form"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const note = String(new FormData(e.currentTarget).get('reason') || '');
+                        if (
+                          await act(
+                            { action: 'set_status', payload: { id: p.id, status: decision, note } },
+                            decision === 'rejected'
+                              ? 'Pedido recusado. O cliente foi notificado.'
+                              : 'Informações solicitadas. O cliente foi notificado.',
+                          )
+                        )
+                          setDecision(null);
+                      }}
+                    >
+                      <Field
+                        label={
+                          decision === 'rejected'
+                            ? 'Motivo da recusa (opcional)'
+                            : 'Informações necessárias'
+                        }
+                      >
+                        <textarea
+                          name="reason"
+                          required={decision === 'needs_information'}
+                          maxLength={4000}
+                        />
+                      </Field>
+                      <div className="inline-actions">
+                        <button className="button" disabled={pending}>
+                          {decision === 'rejected'
+                            ? 'Confirmar recusa'
+                            : 'Enviar solicitação de informações'}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => setDecision(null)}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  )}
                   {['received', 'analysis', 'needs_information'].includes(p.status) && (
                     <QuoteForm
                       pending={pending}
@@ -382,7 +451,7 @@ export function ProjectWorkspace({
                                 act({ action: 'payment_pending', payload: { id: p.id } })
                               }
                             >
-                              Recebimento não identificado
+                              Marcar pagamento como pendente
                             </button>
                           )}
                         </div>
@@ -424,6 +493,8 @@ export function ProjectWorkspace({
                       ['Empresa', brief.company],
                       ['E-mail', brief.email],
                       ['WhatsApp', brief.phone],
+                      ['Classificação', isPremium(template) ? 'Premium' : 'Convencional'],
+                      ['Estilo', styleLabels[template.style]],
                       [
                         'Categoria / modelo',
                         `${template.category_name || template.slug.split('-')[0]} · ${template.name}`,
@@ -667,8 +738,34 @@ export function ProjectWorkspace({
   );
 }
 function FileLink({ file: f }: { file: ProjectFile }) {
+  const [url, setURL] = useState(''),
+    [error, setError] = useState('');
+  useEffect(() => {
+    if (!isGitHubPages) return;
+    let active = true;
+    const load = () =>
+      fileURL(f.id, true)
+        .then((url) => {
+          if (active) setURL(url);
+        })
+        .catch(() => {
+          if (active) setError('Arquivo indisponível ou sem permissão.');
+        });
+    void load();
+    const timer = setInterval(load, 45000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [f.id]);
   return (
-    <a href={`/api/files/${f.id}`} target="_blank" rel="noopener noreferrer">
+    <a
+      href={isGitHubPages ? url || undefined : `/api/files/${f.id}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-disabled={isGitHubPages && !url}
+      title={error || undefined}
+    >
       <FileText size={17} />
       <span>
         {f.name}
@@ -683,7 +780,7 @@ function FileLink({ file: f }: { file: ProjectFile }) {
           }
         </span>
       </span>
-      <small>{Math.ceil(f.size / 1024)} KB</small>
+      <small>{error || `${Math.ceil(f.size / 1024)} KB`}</small>
       <Download size={14} />
     </a>
   );
@@ -722,7 +819,15 @@ function QuoteForm({
         }}
       >
         <Field label="Preço total (R$)">
-          <input type="number" name="amount" step=".01" min="1" max="1000000" required />
+          <input
+            type="number"
+            inputMode="decimal"
+            name="amount"
+            step=".01"
+            min="1"
+            max="1000000"
+            required
+          />
         </Field>
         <Field label="Prazo estimado">
           <input

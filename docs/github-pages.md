@@ -20,12 +20,14 @@ Na compilação Pages, `NEXT_PUBLIC_DEPLOY_TARGET=github-pages` ativa `output: '
 - Homepage, catálogo com filtros, 42 demonstrações navegáveis e 42 estúdios pré-gerados.
 - 39 modelos convencionais em 13 categorias e três Premium, com busca, filtros, ordenação e comparação de até três modelos.
 - Oito ferramentas, seis cores, paletas, tipografia, imagens locais, sete seções, desfazer/refazer, revisão e prévia desktop/tablet/celular.
-- Rascunho no dispositivo e exportação/importação JSON da configuração com imagens, além da exportação da solicitação preenchida.
+- Rascunho no dispositivo e exportação/importação JSON da configuração com imagens, sem substituir o envio real do pedido.
 - Termos, privacidade, informações sobre esta versão e página 404.
 
-GitHub Pages não executa um servidor Node.js. APIs `POST`, cookies de autenticação SSR, proxy, uploads privados, pedidos no banco, mensagens, propostas, Pix e administração não são executados por esta publicação. O código completo está preservado para uso futuro com um servidor. As rotas `/conta`, `/painel` e `/admin` apresentam essa informação, sem simular login, pagamentos ou dados privados. Nenhuma chave Supabase é necessária para o workflow e nenhuma credencial de backend deve ser adicionada ao artefato estático.
+GitHub Pages não executa um servidor Node.js. As rotas estáticas `/conta`, `/painel`, `/admin` e suas seções usam SDK Supabase no navegador: sessão PKCE, leitura com RLS e comandos transacionais autorizados no banco. Detalhes de pedidos usam query `?id=UUID`; o editor reabre rascunho privado com `?projeto=UUID`. Somente a URL HTTPS e chave `sb_publishable_` entram no bundle. Configure ambas nas Repository Variables do Actions; `build:pages` também carrega `.env.local` localmente, sem copiá-lo ao artefato.
 
-Imagens selecionadas no estúdio estático são armazenadas somente no IndexedDB do navegador. Não são uploads privados nem ficam no servidor do GitHub. A transferência entre dispositivos é por exportação/importação JSON. Preços públicos podem ser publicados pelo snapshot `public/catalog-settings.json`, exportado no painel da versão completa; veja [o roteiro do showroom](showroom.md).
+Aplique todas as cinco migrations, configure os callbacks do Auth e publique a Edge Function `finalize-upload` conforme README. Ela verifica JWT, usuário confirmado, projeto e bytes antes de vincular arquivos privados. O usuário comum não pode invocar a finalização privilegiada, alterar Pix ou promover-se a administrador. O primeiro administrador é definido pelo proprietário no SQL Editor após cadastro confirmado, sem senha padrão. SMTP de notificações comerciais continua dependendo de worker externo; notificações internas funcionam no banco.
+
+Imagens selecionadas no estúdio são armazenadas inicialmente no IndexedDB do navegador. Ao salvar na conta/enviar, são promovidas para Storage privado e vinculadas ao projeto após validação Edge. Não são uploads privados nem ficam no servidor do GitHub. A transferência entre dispositivos é por exportação/importação JSON. Preços públicos podem ser publicados pelo snapshot `public/catalog-settings.json`, exportado no painel da versão completa; veja [o roteiro do showroom](showroom.md).
 
 ## Configuração do GitHub
 

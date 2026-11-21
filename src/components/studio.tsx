@@ -38,8 +38,10 @@ import { command, upload } from '@/lib/api-client';
 import { SitePreview } from './site-preview';
 import { Field, downloadJSON } from './form-ui';
 import { isGitHubPages, assetPath } from '@/lib/deployment';
+import { browserConfigured, projectHref, refreshData } from '@/lib/browser-platform';
+import { useBrowserSession } from './browser-runtime';
 import { editorHistory } from '@/lib/editor-history';
-import { storeImage, imageData } from '@/lib/local-images';
+import { storeImage, imageData, readImage } from '@/lib/local-images';
 import { PreviewImage } from './preview-image';
 
 const sections = [
@@ -72,7 +74,7 @@ const tabs = [
 
 export function Studio({
   template,
-  userId,
+  userId: serverUserId,
   initialProject,
 }: {
   template: Template;
@@ -80,6 +82,12 @@ export function Studio({
   initialProject?: Project;
 }) {
   const router = useRouter();
+  const session = useBrowserSession(),
+    userId = isGitHubPages ? session.user?.id || null : serverUserId;
+  const ordersEnabled = browserConfigured();
+  const draftId = useRef(initialProject?.id || '');
+  const uploadedImages = useRef(new Map<string, string>());
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [history, dispatch] = useReducer(editorHistory, {
     past: [],
     present: initialProject?.config || defaultConfig(template),
@@ -106,7 +114,10 @@ export function Studio({
   );
   useEffect(() => {
     const exit = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setFullScreen(false);
+      if (e.key === 'Escape') {
+        setFullScreen(false);
+        setMobileToolsOpen(false);
+      }
     };
     window.addEventListener('keydown', exit);
     return () => window.removeEventListener('keydown', exit);
@@ -125,7 +136,7 @@ export function Studio({
     [confirmation, setConfirmation] = useState<{ id: string; number: string } | null>(null);
   const dirty = useRef(false),
     dialog = useRef<HTMLDialogElement>(null);
-  const key = `${isGitHubPages ? 'nexo-pages-draft' : 'nexo-draft'}:${initialProject?.id || template.slug}`;
+  const key = `${isGitHubPages ? 'nexo-pages-draft' : 'nexo-draft'}:${initialProject?.id || template.slug}:${userId || 'anonymous'}`;
   const form = useForm<z.input<typeof briefSchema>>({
     resolver: zodResolver(briefSchema),
     defaultValues: {
@@ -143,10 +154,18 @@ export function Studio({
   });
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem(key) || 'null');
+      const anonymousKey = `${isGitHubPages ? 'nexo-pages-draft' : 'nexo-draft'}:${template.slug}:anonymous`;
+      const legacyKey = `${isGitHubPages ? 'nexo-pages-draft' : 'nexo-draft'}:${initialProject?.id || template.slug}`;
+      const stored = JSON.parse(
+        localStorage.getItem(key) ||
+          (!initialProject && userId && localStorage.getItem(anonymousKey)) ||
+          localStorage.getItem(legacyKey) ||
+          'null',
+      );
       const parsed = (isGitHubPages ? localConfigSchema : configSchema).safeParse(stored?.config);
       if (
         parsed.success &&
+        (!stored.owner || stored.owner === userId) &&
         (!initialProject || new Date(stored.savedAt) > new Date(initialProject.updated_at))
       ) {
         // Synchronize the React editor with a persisted external draft once on mount.
@@ -154,11 +173,14 @@ export function Studio({
         // Hydrate the editor once from an external persisted draft.
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setLocalSaved(true);
-        if (stored.owner === userId && stored.id) setProjectId(stored.id);
+        if (stored.owner === userId && stored.id) {
+          setProjectId(stored.id);
+          draftId.current = stored.id;
+        }
       }
     } catch {}
     setReady(true);
-  }, [key, initialProject, userId]);
+  }, [key, initialProject, userId, template.slug]);
   useEffect(() => {
     if (!ready) return;
     if (confirmation) {
@@ -221,16 +243,19 @@ export function Studio({
         : [...config[key], value],
     );
   }
-  async function persist() {
-    if (isGitHubPages)
-      throw new Error('Esta versão salva no dispositivo. A nuvem requer a versão com servidor.');
+  async function persist(value: SiteConfig = config) {
+    if (!ordersEnabled)
+      throw new Error(
+        'Envio indisponível: o Supabase ainda não foi configurado. Sua personalização continua salva neste dispositivo.',
+      );
     if (!userId)
       throw new Error(
         'Entre na sua conta para salvar na nuvem e enviar o pedido. Seu rascunho fica neste dispositivo.',
       );
-    const parsed = configSchema.safeParse(config);
+    const parsed = configSchema.safeParse(value);
     if (!parsed.success) throw new Error(parsed.error.issues[0].message);
-    const id = projectId || crypto.randomUUID();
+    const id = projectId || draftId.current || crypto.randomUUID();
+    draftId.current = id;
     await command({
       action: 'save_draft',
       payload: { id, template_id: template.id, config: parsed.data },
@@ -239,11 +264,50 @@ export function Studio({
     setCloudSaved(true);
     return id;
   }
+  async function persistAll() {
+    if (!isGitHubPages) return persist();
+    const local = [config.logo, config.heroImage, ...config.images].filter((v) =>
+      v.startsWith('local-image:'),
+    );
+    if (!local.length) return persist();
+    const base = {
+      ...config,
+      logo: config.logo.startsWith('local-image:') ? '' : config.logo,
+      heroImage: config.heroImage.startsWith('local-image:')
+        ? defaultConfig(template).heroImage
+        : config.heroImage,
+      images: config.images.filter((v) => !v.startsWith('local-image:')),
+    };
+    const id = await persist(base);
+    for (const ref of new Set(local)) {
+      if (uploadedImages.current.has(id + ref)) continue;
+      const blob = await readImage(ref);
+      if (!blob)
+        throw new Error('Imagem local não encontrada. Selecione-a novamente antes de enviar.');
+      const ext = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png';
+      const result = await upload(
+        id,
+        new File([blob], 'imagem.' + ext, { type: blob.type }),
+        'asset',
+      );
+      uploadedImages.current.set(id + ref, '/api/files/' + result.id + '?inline=1');
+    }
+    const convert = (ref: string) => uploadedImages.current.get(id + ref) || ref;
+    const cloud = {
+      ...config,
+      logo: convert(config.logo),
+      heroImage: convert(config.heroImage),
+      images: config.images.map(convert),
+    };
+    await persist(cloud);
+    setConfig(cloud);
+    return id;
+  }
   async function save() {
     setPending(true);
     setError('');
     try {
-      if (isGitHubPages) {
+      if (isGitHubPages && (!userId || !ordersEnabled)) {
         localStorage.setItem(
           key,
           JSON.stringify({ config, id: '', owner: null, savedAt: new Date().toISOString() }),
@@ -253,7 +317,7 @@ export function Studio({
         setMessage('Rascunho salvo neste dispositivo.');
         return;
       }
-      await persist();
+      await persistAll();
       setMessage('Rascunho salvo na sua conta.');
     } catch (e) {
       setError((e as Error).message);
@@ -292,35 +356,22 @@ export function Studio({
     setPending(true);
     setError('');
     try {
-      if (isGitHubPages) {
-        const assets = await collectAssets();
-        downloadJSON(
-          {
-            version: 2,
-            assets,
-            template,
-            config,
-            brief: briefSchema.parse(brief),
-            exportedAt: new Date().toISOString(),
-          },
-          'solicitacao-nexo.json',
-        );
-        setModal(false);
-        setMessage(
-          'Solicitação exportada em JSON. Nenhum pedido foi enviado ou armazenado em um servidor.',
-        );
-        return;
-      }
-      const id = await persist();
+      if (!ordersEnabled)
+        throw new Error('Envio indisponível: o Supabase ainda não foi configurado.');
+      const id = await persistAll();
       for (const file of files) await upload(id, file, 'attachment');
       const result = await command({
         action: 'submit',
         payload: { id, brief: briefSchema.parse(brief) },
       });
+      if (!result?.id || typeof result.number !== 'string')
+        throw new Error(
+          'O servidor não confirmou o pedido. Consulte sua conta antes de tentar novamente.',
+        );
       setConfirmation(result);
       dirty.current = false;
       localStorage.removeItem(key);
-      router.refresh();
+      refreshData(router);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -425,6 +476,7 @@ export function Studio({
     const next = field === 'company' || field === 'slogan' ? 'identidade' : 'conteudo';
     setTab(next);
     setToolsOpen(true);
+    setMobileToolsOpen(true);
     requestAnimationFrame(() =>
       document.querySelector<HTMLInputElement>('[data-config-field="' + field + '"]')?.focus(),
     );
@@ -466,7 +518,7 @@ export function Studio({
   return (
     <main
       id="conteudo"
-      className={`studio-workspace ${fullScreen ? 'studio-fullscreen' : ''} ${!toolsOpen ? 'tools-collapsed' : ''}`}
+      className={`studio-workspace ${fullScreen ? 'studio-fullscreen' : ''} ${!toolsOpen ? 'tools-collapsed' : ''} ${mobileToolsOpen ? 'mobile-tools-open' : ''}`}
     >
       <div className="studio-top">
         <div>
@@ -552,10 +604,10 @@ export function Studio({
             <Download size={16} />
           </button>
           <button className="button button-outline button-small" onClick={save} disabled={pending}>
-            {isGitHubPages ? 'Salvar no dispositivo' : 'Salvar rascunho'}
+            Salvar rascunho
           </button>
           <button className="button button-small" disabled={pending} onClick={openReview}>
-            Solicitar orçamento
+            Enviar o pedido
           </button>
         </div>
       </div>
@@ -578,7 +630,7 @@ export function Studio({
           </button>
         ))}
         <button onClick={openReview}>Revisar projeto</button>
-        <span>Solicitação {isGitHubPages ? 'em JSON' : ''}</span>
+        <span>Enviar solicitação</span>
       </nav>
       <button
         className="studio-panel-toggle"
@@ -618,7 +670,7 @@ export function Studio({
               style={{ marginBottom: 18 }}
             >
               {error || message}
-              {!userId && !isGitHubPages && error && (
+              {!userId && ordersEnabled && error && (
                 <>
                   {' '}
                   <Link href={`/conta?next=${encodeURIComponent(`/studio/${template.slug}`)}`}>
@@ -1006,6 +1058,22 @@ export function Studio({
           </p>
         </section>
       </div>
+      <div className="mobile-studio-bar">
+        <button
+          aria-expanded={mobileToolsOpen}
+          onClick={() => setMobileToolsOpen(!mobileToolsOpen)}
+        >
+          <Palette size={18} />
+          Ferramentas
+        </button>
+        <button onClick={save} disabled={pending}>
+          <Save size={18} />
+          Salvar
+        </button>
+        <button className="mobile-order" onClick={openReview} disabled={pending}>
+          Enviar o pedido
+        </button>
+      </div>
       {modal && (
         <dialog
           ref={dialog}
@@ -1026,15 +1094,13 @@ export function Studio({
                   : reviewing
                     ? 'Seu projeto, em perspectiva.'
                     : isGitHubPages
-                      ? 'Leve sua ideia com você.'
+                      ? 'Conte um pouco mais.'
                       : 'Conte um pouco mais.'}
               </h2>
               <p>
                 {confirmation
                   ? 'Vamos analisar cada detalhe da sua ideia.'
-                  : isGitHubPages
-                    ? 'Esta versão prepara um arquivo JSON com a sua personalização e os detalhes abaixo. Nada é enviado ao servidor.'
-                    : 'Sua personalização será incluída automaticamente no pedido.'}
+                  : 'Sua personalização será incluída no pedido armazenado em sua conta.'}
               </p>
             </div>
             <button
@@ -1055,7 +1121,7 @@ export function Studio({
                 O orçamento será preparado após a análise. Você acompanha a proposta, o pagamento e
                 o desenvolvimento na sua conta.
               </p>
-              <Link className="button" href={`/painel/projetos/${confirmation.id}`}>
+              <Link className="button" href={projectHref(confirmation.id)}>
                 Acompanhar meu projeto
               </Link>
             </div>
@@ -1131,9 +1197,9 @@ export function Studio({
                 ))}
               </div>
               <p className="notice">
-                {isGitHubPages
-                  ? 'Esta publicação prepara um JSON com suas escolhas. Nenhum pedido, pagamento ou mensagem será enviado.'
-                  : 'A proposta final será preparada após análise. Nenhum valor é cobrado nesta etapa.'}
+                {ordersEnabled
+                  ? 'A proposta final será preparada após análise. Nenhum valor é cobrado nesta etapa.'
+                  : 'Envio indisponível: o Supabase ainda não foi configurado. Sua personalização permanece salva neste dispositivo.'}
               </p>
               <div className="inline-actions">
                 <button className="button" onClick={() => setReviewing(false)}>
@@ -1144,7 +1210,7 @@ export function Studio({
                 </button>
               </div>
             </div>
-          ) : !userId && !isGitHubPages ? (
+          ) : !userId && ordersEnabled ? (
             <div className="form-stack">
               <p className="notice">
                 Crie sua conta ou entre para enviar o pedido com segurança. Seu rascunho está salvo
@@ -1221,14 +1287,13 @@ export function Studio({
                   <input
                     type="file"
                     multiple
-                    disabled={isGitHubPages}
+                    disabled={pending || !ordersEnabled}
                     accept="image/png,image/jpeg,image/webp,application/pdf"
                     onChange={(e) => setFiles(Array.from(e.target.files || []).slice(0, 5))}
                   />
                   <small>
-                    {isGitHubPages
-                      ? 'Anexos exigem a versão com servidor. O JSON contém somente os dados e a configuração informados.'
-                      : 'PNG, JPEG, WebP ou PDF. Arquivos privados, visíveis somente por você e pelo administrador.'}
+                    PNG, JPEG, WebP ou PDF, até 4 MB. Arquivos privados, visíveis somente por você e
+                    pelo administrador.
                   </small>
                 </Field>
               </div>
@@ -1239,9 +1304,8 @@ export function Studio({
                   <Link href="/privacidade" target="_blank">
                     Política de Privacidade
                   </Link>{' '}
-                  {isGitHubPages
-                    ? 'e entendo que o JSON conterá os dados informados e ficará sob minha responsabilidade. Nenhum pedido será enviado.'
-                    : 'e autorizo o tratamento dos meus dados para analisar este pedido e entrar em contato.'}
+                  e autorizo o tratamento dos meus dados para analisar este pedido e entrar em
+                  contato.
                 </span>
               </label>
               {form.formState.errors.consent && (
@@ -1249,12 +1313,14 @@ export function Studio({
                   {form.formState.errors.consent.message}
                 </span>
               )}
-              <button className="button full-width" disabled={pending}>
-                {pending
-                  ? 'Preparando...'
-                  : isGitHubPages
-                    ? 'Baixar solicitação em JSON'
-                    : 'Enviar meu projeto para análise'}
+              {!ordersEnabled && (
+                <p className="notice full-width" role="status">
+                  Envio indisponível: o Supabase ainda não foi configurado. Nenhum pedido foi
+                  recebido. Seu rascunho continua neste dispositivo.
+                </p>
+              )}
+              <button className="button full-width" disabled={pending || !ordersEnabled}>
+                {pending ? 'Enviando...' : 'Enviar o pedido'}
               </button>
             </form>
           )}

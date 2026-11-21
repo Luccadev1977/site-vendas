@@ -1,5 +1,10 @@
-export { PagesNotice as default } from '@/components/pages-notice';
-export const metadata = {
-  title: 'Área do cliente na versão completa',
-  robots: { index: false, follow: false },
-};
+import { Suspense } from 'react';
+import { PagesPortal } from '@/components/pages-portal';
+export const metadata = { title: 'Minha conta Nexo', robots: { index: false, follow: false } };
+export default function Page() {
+  return (
+    <Suspense fallback={<p className="wrap portal-loading">Preparando acesso seguro...</p>}>
+      <PagesPortal view="client" />
+    </Suspense>
+  );
+}

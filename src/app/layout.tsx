@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import { Header, Footer } from '@/components/chrome';
 import './globals.css';
 import './showroom.css';
+import './commerce.css';
+import { BrowserRuntime } from '@/components/browser-runtime';
+import { FloatingWhatsApp } from '@/components/whatsapp';
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
   title: { default: 'Nexo Studio — Sites com a sua essência', template: '%s | Nexo Studio' },
@@ -25,9 +28,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <a className="skip-link" href="#conteudo">
           Pular para o conteúdo
         </a>
-        <Header />
-        {children}
-        <Footer />
+        <BrowserRuntime>
+          <Header />
+          {children}
+          <Footer />
+          <FloatingWhatsApp />
+        </BrowserRuntime>
       </body>
     </html>
   );

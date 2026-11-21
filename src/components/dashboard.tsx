@@ -2,8 +2,10 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { refreshData, projectHref } from '@/lib/browser-platform';
 import { Plus, FolderOpen, LogOut, Bell } from 'lucide-react';
 import { browserSupabase } from '@/lib/supabase/browser';
+import { isGitHubPages } from '@/lib/deployment';
 import { command } from '@/lib/api-client';
 import {
   date,
@@ -35,8 +37,9 @@ export function StatusBadge({ status }: { status: string }) {
 export function Refresh() {
   const router = useRouter();
   useEffect(() => {
+    if (isGitHubPages) return;
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') router.refresh();
+      if (document.visibilityState === 'visible') refreshData(router);
     }, 20000);
     return () => clearInterval(timer);
   }, [router]);
@@ -57,7 +60,7 @@ export function Logout() {
             const { error } = await browserSupabase().auth.signOut();
             if (error) throw error;
             router.replace('/conta');
-            router.refresh();
+            refreshData(router);
           } catch {
             setError('Não foi possível sair. Tente novamente.');
             setPending(false);
@@ -100,7 +103,7 @@ export function Notifications({
               setPending(true);
               try {
                 await command({ action: 'read_notifications', payload: {} });
-                router.refresh();
+                refreshData(router);
               } catch {
                 setError('Não foi possível marcar como lidas.');
               } finally {
@@ -118,13 +121,7 @@ export function Notifications({
           {items.map((n) => (
             <Link
               key={n.id}
-              href={
-                n.project_id
-                  ? `${admin ? '/admin/pedidos' : '/painel/projetos'}/${n.project_id}`
-                  : admin
-                    ? '/admin'
-                    : '/painel'
-              }
+              href={n.project_id ? projectHref(n.project_id, admin) : admin ? '/admin' : '/painel'}
               className={!n.read_at ? 'unread' : ''}
             >
               {n.title}
@@ -224,7 +221,7 @@ export function ClientDashboard({
           {tab === 'orcamentos' ? (
             <div className="project-list">
               {quotes.map((q) => (
-                <Link className="project-row" key={q.id} href={`/painel/projetos/${q.project_id}`}>
+                <Link className="project-row" key={q.id} href={projectHref(q.project_id)}>
                   <div>
                     <h3>{projects.find((p) => p.id === q.project_id)?.name}</h3>
                     <small>Proposta · {date(q.created_at)}</small>
@@ -242,7 +239,7 @@ export function ClientDashboard({
           ) : tab === 'pagamentos' ? (
             <div className="project-list">
               {payments.map((p) => (
-                <Link key={p.id} className="project-row" href={`/painel/projetos/${p.project_id}`}>
+                <Link key={p.id} className="project-row" href={projectHref(p.project_id)}>
                   <div>
                     <h3>{projects.find((project) => project.id === p.project_id)?.name}</h3>
                     <small>
@@ -269,7 +266,7 @@ export function ClientDashboard({
                   href={
                     p.status === 'draft'
                       ? `/studio/${p.template_snapshot.slug}?projeto=${p.id}`
-                      : `/painel/projetos/${p.id}`
+                      : projectHref(p.id)
                   }
                 >
                   <div>

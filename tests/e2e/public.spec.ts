@@ -18,7 +18,7 @@ test('catalog filters lead to a navigable preview and preserve a local draft', a
   await expect(page.getByLabel('Nome da empresa', { exact: true })).toHaveValue('Empresa QA local');
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole('button', { name: 'Solicitar orçamento', exact: true }).click();
+  await page.getByRole('button', { name: 'Enviar o pedido', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Seu projeto, em perspectiva.' })).toBeVisible();
   await page.getByRole('button', { name: 'Continuar para os detalhes', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();

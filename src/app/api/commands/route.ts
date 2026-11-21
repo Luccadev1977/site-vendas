@@ -26,6 +26,7 @@ export async function POST(request: Request) {
         'payment_pending',
         'set_status',
         'settings',
+        'whatsapp',
         'category',
         'template',
         'testimonial',

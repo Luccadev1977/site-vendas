@@ -29,8 +29,8 @@ export default function Models() {
         <PagesCatalog />
       </Suspense>
       <p className="section-footnote">
-        Demonstrações navegáveis e rascunhos locais. Pedidos, contas e pagamentos exigem a versão
-        com servidor.
+        Explore e personalize antes de enviar. Entre na sua conta para acompanhar o pedido e a
+        proposta.
       </p>
     </main>
   );

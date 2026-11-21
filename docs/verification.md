@@ -57,3 +57,32 @@ No navegador, as 42 demonstrações renderizaram título, imagem local e aviso d
 Um JSON de teste sem dados pessoais, com imagem WebP incluída, foi importado pelo campo **Ou colar projeto JSON**. A prévia mostrou a imagem como URL `blob`, recuperou a imagem e o projeto após recarregar e concluiu a exportação com imagens pela interface. A transferência de arquivos pelo seletor nativo da automação travou; a seleção por arquivo e sua confirmação visual não foram concluídas nesse teste. O roteiro manual continua sendo selecionar PNG/JPEG/WebP, conferir a prévia, confirmar, recarregar e exportar/importar em outro navegador. Não foram usados arquivos pessoais.
 
 Os testes SQL cobrem a migração e a hierarquia dos preços; nenhum Supabase real foi configurado, nem executados testes conectados de Auth, Storage ou SMTP. Os specs E2E foram atualizados para os novos controles; a verificação de navegador desta entrega foi feita pela automação CUA, sem executar a suíte Playwright conectada.
+
+## Atualização comercial estática — 21/11/2026 (pré-aplicação)
+
+O projeto Supabase `dhgyfncmvwnlehfelsth` respondeu pela API pública e a autenticação administrativa da CLI foi confirmada. A CLI foi vinculada localmente ao projeto. A URL e chave publicável foram salvas em `.env.local` ignorado e nas Repository Variables do Actions. A consulta anônima a `templates`, `projects` e `site_settings` retornou PGRST205: tabelas ainda indisponíveis na Data API. **Nenhuma migration foi executada no projeto remoto nesta etapa: o proprietário solicitou revisão antes de alterar o banco.** O plano está em [Migrations para revisão](supabase-migrations.md).
+
+Verificação local: 56 testes Vitest/PGlite aprovados, incluindo as cinco migrations reais, isolamento de clientes, restrição administrativa, cadastro de WhatsApp, tipo de chave Pix, consentimento, número único/idempotência, proposta/aprovação, Pix liberado somente na etapa correta, comprovante em revisão e confirmação exclusivamente manual. A nova fronteira de arquivos bloqueia `register_file`/funções privilegiadas para clientes e valida os bytes antes da finalização confiável. Deno verificou os tipos da Edge Function; lint, TypeScript, build completo Node e build Pages passaram. A exportação Pages gerou 144 páginas e 775 arquivos; o verificador conferiu 3.053 referências locais e ausência de APIs/arquivos privados no artefato.
+
+### Navegador real
+
+Foram navegadas homepage, catálogo, demo Oliva Atelier, estúdio Oliva Atelier, conta e entrada administrativa em todas as larguras abaixo, altura 844 px. Mediu-se `document.documentElement.scrollWidth` contra `clientWidth` após renderização. A diferença de 15 px entre viewport e área útil corresponde à barra vertical de rolagem do ambiente Windows.
+
+| Viewport | Área útil | Maior largura do conteúdo nas seis páginas | Resultado              |
+| -------- | --------- | ------------------------------------------ | ---------------------- |
+| 320 px   | 305 px    | 305 px                                     | Sem excesso horizontal |
+| 375 px   | 360 px    | 360 px                                     | Sem excesso horizontal |
+| 390 px   | 375 px    | 375 px                                     | Sem excesso horizontal |
+| 430 px   | 415 px    | 415 px                                     | Sem excesso horizontal |
+| 768 px   | 753 px    | 753 px                                     | Sem excesso horizontal |
+| 1024 px  | 1009 px   | 1009 px                                    | Sem excesso horizontal |
+
+A primeira rodada revelou transbordamento dos anéis decorativos da homepage em 768/1024 px; a correção foi validada na segunda rodada completa. Também foram exercitados menu mobile (abrir/navegar/fechar), barra inferior do editor, painel expansível com oito ferramentas, revisão em modal com rolagem interna e bloqueio de envio anônimo com links de cadastro/login. Em 320 px, o modal coube na área útil e sua largura interna coincidiu com a largura de rolagem (279 px). A captura [personalizador no celular](screenshots/mobile-studio.jpg) registra a interface real. As demonstrações continuam explicitamente fictícias; o botão comercial utiliza o fluxo real.
+
+### Limites desta etapa
+
+Não foram executados pedidos, decisões, pagamentos, upload gerenciado, cadastro/recuperação por e-mail nem visualização de painéis com sessões reais no Supabase hospedado. A função `finalize-upload` ainda não foi publicada. Esses cenários aguardam a aprovação/aplicação do esquema e as contas confirmadas. A ausência das tabelas também produz erros 404 de Data API ao tentar carregar o contato público; a verificação de console do ambiente conectado só poderá ser concluída depois da aplicação. WhatsApp permanece sem número/desativado e Pix sem valores reais até o administrador configurá-los. Nenhuma service role foi enviada ao frontend, ao Actions ou ao Git. Não houve publicação desta atualização antes da revisão do banco.
+
+### Envio autorizado ao GitHub — 21/11/2026
+
+Após revisar as migrations, o proprietário autorizou versionar e publicar todas as alterações implementadas, mantendo a aplicação dos SQL no Supabase pendente de aprovação. O workflow publica somente a aplicação estática; não contém comandos de migration ou deploy de Edge Functions. As duas variáveis públicas do Supabase já estão configuradas como Repository Variables. A publicação do código e das páginas não significa que os fluxos comerciais no serviço hospedado foram homologados. O resultado do workflow e a correspondência do SHA em `deployment.json` devem ser conferidos antes de informar a conclusão da publicação. A rotina permanente de verificações, commit, push em `main` e confirmação remota foi registrada em `AGENTS.md`.

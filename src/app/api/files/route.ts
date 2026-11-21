@@ -66,9 +66,8 @@ export async function POST(request: Request) {
       return failure(
         'Não foi possível armazenar o arquivo. Verifique o limite de arquivos do projeto.',
       );
-    const { data, error: registerError } = await auth.db.rpc('command', {
-      action: 'register_file',
-      payload: {
+    const { data, error: registerError } = await auth.db.functions.invoke('finalize-upload', {
+      body: {
         id: pid,
         path,
         name: file.name.replace(/[^\p{L}\p{N} ._()-]/gu, '_').slice(0, 200) || `arquivo.${ext}`,
@@ -77,7 +76,7 @@ export async function POST(request: Request) {
         purpose,
       },
     });
-    if (registerError) {
+    if (registerError || data?.error) {
       await auth.db.storage.from('project-files').remove([path]);
       return failure('Não foi possível vincular o arquivo nesta etapa do projeto.');
     }

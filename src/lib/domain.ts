@@ -143,7 +143,13 @@ export type Notification = {
   read_at: string | null;
   created_at: string;
 };
-export type PixSettings = { key: string; beneficiary: string; bank: string; instructions: string };
+export type PixSettings = {
+  key: string;
+  beneficiary: string;
+  bank: string;
+  instructions: string;
+  key_type?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+};
 export type Profile = { id: string; full_name: string; email: string; created_at: string };
 export type Testimonial = {
   id: string;

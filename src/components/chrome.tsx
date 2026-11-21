@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useSyncExternalStore } from 'react';
 import { Menu, X, Sun, Moon, Layers3 } from 'lucide-react';
-import { isGitHubPages, routeWithoutBasePath } from '@/lib/deployment';
+import { routeWithoutBasePath } from '@/lib/deployment';
 
 function subscribeTheme(callback: () => void) {
   window.addEventListener('nexo-theme', callback);
@@ -66,8 +66,8 @@ export function Header() {
           >
             {light ? <Moon size={18} /> : <Sun size={18} />}
           </button>
-          <Link className="account-link" href={isGitHubPages ? '/sobre-a-versao' : '/painel'}>
-            {isGitHubPages ? 'Sobre esta versão' : 'Minha conta'}
+          <Link className="account-link" href="/painel">
+            Minha conta
           </Link>
           <Link className="button button-small header-cta" href="/modelos">
             Começar projeto
@@ -96,8 +96,8 @@ export function Footer() {
       </div>
       <div className="footer-links">
         <Link href="/modelos">Modelos</Link>
-        <Link href={isGitHubPages ? '/sobre-a-versao' : '/painel'}>
-          {isGitHubPages ? 'Sobre esta versão' : 'Área do cliente'}
+        <Link href="/painel">
+          Área do cliente
         </Link>
         <Link href="/privacidade">Privacidade</Link>
         <Link href="/termos">Termos de uso</Link>

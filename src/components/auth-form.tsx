@@ -1,20 +1,24 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { browserSupabase } from '@/lib/supabase/browser';
 import { Field } from './form-ui';
 import { safeReturnPath } from '@/lib/navigation';
+import { isGitHubPages } from '@/lib/deployment';
+import { authRedirect } from '@/lib/browser-platform';
 export function AuthForm({
   initialMode,
   next,
   linkError,
   configured,
+  admin = false,
 }: {
   initialMode: string;
   next: string;
   linkError: boolean;
   configured: boolean;
+  admin?: boolean;
 }) {
   const router = useRouter(),
     [mode, setMode] = useState(initialMode),
@@ -24,6 +28,43 @@ export function AuthForm({
     ),
     [message, setMessage] = useState('');
   const destination = safeReturnPath(next);
+  useEffect(() => {
+    if (!isGitHubPages || !configured) return;
+    let active = true;
+    const query = new URLSearchParams(window.location.search),
+      code = query.get('code'),
+      hash = query.get('token_hash'),
+      type = query.get('type');
+    if (!code && !hash) return;
+    for (const key of ['code', 'token_hash', 'type', 'callback']) query.delete(key);
+    window.history.replaceState(
+      null,
+      '',
+      window.location.pathname + (query.size ? '?' + query.toString() : ''),
+    );
+    async function confirm() {
+      try {
+        const db = browserSupabase();
+        const result = code
+          ? await db.auth.exchangeCodeForSession(code)
+          : await db.auth.verifyOtp({
+              token_hash: hash!,
+              type: type === 'recovery' ? 'recovery' : 'email',
+            });
+        if (result.error) throw result.error;
+        if (!active) return;
+        if (type === 'recovery' || initialMode === 'nova-senha') setMode('nova-senha');
+        else router.replace(destination);
+        window.dispatchEvent(new Event('nexo-session'));
+      } catch {
+        if (active) setError('O link expirou ou não pôde ser validado. Solicite um novo link.');
+      }
+    }
+    void confirm();
+    return () => {
+      active = false;
+    };
+  }, [configured, destination, initialMode, router]);
   const labels =
     mode === 'cadastro'
       ? [
@@ -70,7 +111,9 @@ export function AuthForm({
           password,
           options: {
             data: { full_name: String(fields.get('name') || '') },
-            emailRedirectTo: `${window.location.origin}/auth/confirm?next=${encodeURIComponent(destination)}`,
+            emailRedirectTo: isGitHubPages
+              ? authRedirect(destination)
+              : `${window.location.origin}/auth/confirm?next=${encodeURIComponent(destination)}`,
           },
         });
         if (error) throw error;
@@ -79,7 +122,9 @@ export function AuthForm({
         );
       } else if (mode === 'recuperar') {
         const { error } = await db.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth/confirm?next=${encodeURIComponent('/conta?modo=nova-senha')}`,
+          redirectTo: isGitHubPages
+            ? `${authRedirect('/painel')}&modo=nova-senha`
+            : `${window.location.origin}/auth/confirm?next=${encodeURIComponent('/conta?modo=nova-senha')}`,
         });
         if (error) throw error;
         setMessage('Se houver uma conta para este e-mail, você receberá o link de recuperação.');
@@ -114,9 +159,13 @@ export function AuthForm({
   }
   return (
     <div className="panel auth-card">
-      <span className="eyebrow">ÁREA DO CLIENTE</span>
-      <h1>{labels[0]}</h1>
-      <p>{labels[1]}</p>
+      <span className="eyebrow">{admin ? 'ACESSO ADMINISTRATIVO' : 'ÁREA DO CLIENTE'}</span>
+      <h1>{admin && mode === 'entrar' ? 'Seu estúdio. Seu controle.' : labels[0]}</h1>
+      <p>
+        {admin
+          ? 'Entre com sua conta autorizada. As permissões são verificadas no banco de dados.'
+          : labels[1]}
+      </p>
       {!configured && (
         <p className="notice" style={{ marginBottom: 20 }}>
           O acesso às contas depende da configuração do Supabase pelo responsável pela plataforma.
@@ -180,11 +229,22 @@ export function AuthForm({
           <button onClick={() => switchMode('entrar')}>Já tenho uma conta</button>
         ) : (
           <>
-            <button onClick={() => switchMode('cadastro')}>Criar conta</button>
+            {!admin && <button onClick={() => switchMode('cadastro')}>Criar conta</button>}
             <button onClick={() => switchMode('recuperar')}>Esqueci minha senha</button>
           </>
         )}
       </div>
+      {admin && (
+        <details className="admin-first-access">
+          <summary>Primeiro acesso do administrador</summary>
+          <p>
+            Crie sua conta em <Link href="/conta?modo=cadastro">Cadastro</Link> e confirme seu
+            e-mail. O proprietário do projeto deve autorizar o UUID dessa conta executando o arquivo
+            bootstrap-admin.sql no SQL Editor do Supabase. Criar uma conta comum não concede acesso
+            administrativo.
+          </p>
+        </details>
+      )}
     </div>
   );
 }
