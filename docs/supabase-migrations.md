@@ -15,7 +15,9 @@ Alvo exclusivo: projeto Supabase `dhgyfncmvwnlehfelsth`, Nexo Studio. URL e chav
 
 Após a identificação da conta confirmada e uma segunda autorização explícita, foi executado o bootstrap administrativo em transação, somente para o UUID indicado pelo proprietário. A consulta posterior confirmou exatamente um administrador e correspondência com a conta aprovada. O SQL com o UUID real fica em arquivo local ignorado pelo Git; o bootstrap versionado mantém o placeholder. Não foram alteradas políticas nem promovidas outras contas.
 
-A homologação do login real e painel autenticado deve ser registrada após o proprietário entrar no navegador; verificar RPCs e RLS não substitui essa sessão.
+O proprietário realizou o login na aba pública do navegador integrado. A sessão real carregou visão geral, pedidos, financeiro, catálogo, projetos realizados e configurações (Pix, WhatsApp e auditoria), sem erro de migration. Os valores zerados correspondem à ausência real de pedidos/pagamentos; não foram criados registros comerciais fictícios.
+
+A navegação autenticada também revelou 42 links de demonstração dos modelos arquivados apontando para slugs `legacy-…` ausentes na exportação. O componente do catálogo foi ajustado para usar `content.originalSlug` nos modelos arquivados do Pages e conferir a existência da rota compilada. Modelos novos ainda não publicados exibem orientação em vez de link quebrado; na versão com servidor, modelos desativados não anunciam uma demonstração pública inacessível. IDs, snapshots, modelos e políticas foram preservados.
 
 ## Diagnóstico somente em leitura antes da aplicação — 24/11/2026
 

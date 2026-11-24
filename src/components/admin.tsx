@@ -39,8 +39,24 @@ import { WhatsAppSettingsForm } from './whatsapp-settings';
 import { isGitHubPages } from '@/lib/deployment';
 import { routeWithoutBasePath } from '@/lib/deployment';
 import { csvCell } from '@/lib/csv';
+import { routeTemplate } from '@/lib/template-routes';
 function catalogTemplate(item: Template | Category | Testimonial): item is Template {
   return 'category_id' in item && 'content' in item;
+}
+
+function CatalogDemoLink({ template }: { template: Template }) {
+  const slug =
+    isGitHubPages && !template.active
+      ? template.content.originalSlug || template.slug
+      : template.slug;
+  if (!isGitHubPages && !template.active) return null;
+  if (isGitHubPages && !routeTemplate(slug))
+    return <small>Demonstração disponível após publicar o modelo.</small>;
+  return (
+    <Link href={`/demo/${slug}`} className="text-link" style={{ marginLeft: 20 }}>
+      Ver demonstração
+    </Link>
+  );
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -784,15 +800,7 @@ export function AdminCatalog({
                   <button className="text-link" onClick={() => edit(tab, item)}>
                     Editar
                   </button>
-                  {'style' in item && (
-                    <Link
-                      href={`/demo/${'slug' in item ? String(item.slug) : ''}`}
-                      className="text-link"
-                      style={{ marginLeft: 20 }}
-                    >
-                      Ver demonstração
-                    </Link>
-                  )}
+                  {catalogTemplate(item) ? <CatalogDemoLink template={item} /> : null}
                 </td>
               </tr>
             ))}
