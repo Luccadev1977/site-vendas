@@ -1,5 +1,17 @@
 # Registro de verificação
 
+## Implantação SQL autorizada — 24/11/2026
+
+O diagnóstico somente em leitura confirmou zero migrations, tabelas/funções da aplicação e buckets no projeto `dhgyfncmvwnlehfelsth`. A RPC `is_admin` retornava HTTP 404/PGRST202; `projects` e `site_settings`, 404/PGRST205. A função pública e sua implementação privada já estavam definidas na primeira migration. Não foi necessário modificar os cinco arquivos SQL.
+
+Após aprovação explícita das cinco migrations, a CLI 3.2.0 aplicou somente esses arquivos, na ordem, preservando seus números de versão. O conector confirmou o histórico completo, 21 tabelas com RLS, 22 políticas e ausência de grants de escrita direta para navegador. As sete RPCs públicas são `SECURITY INVOKER`, com grants restritos; nenhuma implementação privilegiada usa `search_path` inseguro. Os dois buckets têm `public = false`, com leitura pública de imagens de catálogo por política. A conta Auth existente foi preservada e recebeu perfil/registro de cliente. Não foram criados pedidos ou pagamentos de teste em produção.
+
+HTTP após a aplicação: `is_admin` e `projects` retornaram 401/42501 sem sessão, preservando a restrição de acesso. `site_settings` e `templates` retornaram 200; o catálogo contém 42 modelos ativos, três Premium e 13 categorias, mantendo os 42 modelos anteriores arquivados. As políticas remotas correspondem ao isolamento por titular/projeto e administrador. Após identificar a conta confirmada e obter uma segunda aprovação explícita, o bootstrap cadastrou somente o UUID autorizado; a consulta posterior confirmou exatamente um administrador. O UUID real não foi incluído nos arquivos versionados. O login real do proprietário ainda precisa ser homologado após essa designação.
+
+67 testes locais passaram. O teste de isolamento agora comprova que as dez tabelas protegidas contêm registros antes de conferir que outro cliente recebe zero registros, somente o próprio perfil/cliente e nenhum objeto Storage do titular. Os novos testes cobrem ausência de promoção automática, administrador único, RPC administrativa, RLS em todas as tabelas e privacidade dos objetos internos. Lint, TypeScript, formatação e builds completo/Pages passaram. O verificador estático aprovou 776 arquivos, 42 demos, 42 estúdios e 3061 referências locais.
+
+Advisors após implantação: quatro observações informativas de RLS sem política nos objetos privados (negação intencional), proteção de senhas vazadas desativada, índice ausente para a FK `project_reads.user_id` e índices ainda sem uso. Nenhum alerta foi contornado removendo proteção ou concedendo permissões adicionais. Edge Function `finalize-upload`, SMTP próprio e dados comerciais Pix/WhatsApp permanecem pendentes.
+
 Data: 19/11/2026. Fluxo: visitante → catálogo → estúdio → APIs autenticadas → transações PostgreSQL → painéis de cliente e administrador.
 
 ## Evidências locais

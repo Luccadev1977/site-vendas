@@ -14,6 +14,8 @@ A publicação no GitHub Pages usa Supabase Auth, Data API com RLS e Storage pri
 
 Foram executados testes SQL em PostgreSQL embarcado e testes de validação. A homologação integrada de Auth, Storage e SMTP no Supabase real continua pendente. Consulte [a evidência de verificação](docs/verification.md).
 
+Em 24/11/2026, as cinco migrations foram aplicadas ao projeto oficial após aprovação do proprietário. O histórico, as 21 tabelas com RLS, os 42 modelos (três Premium), os buckets e as RPCs foram conferidos no serviço real. Os 404 de schema foram resolvidos; sem sessão, os recursos privados retornam acesso negado. Uma única conta administrativa foi designada após identificação e autorização separadas; a homologação de sua sessão está pendente, e a Edge Function de anexos ainda precisa ser publicada. Consulte [o diagnóstico e a implantação](docs/supabase-migrations.md).
+
 ## Funcionalidades
 
 - Homepage, benefícios, processo, FAQ, SEO, sitemap, robots, Open Graph, termos e privacidade.

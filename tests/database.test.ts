@@ -5,6 +5,7 @@ import { categories, defaultConfig, templates } from '../src/lib/catalog';
 import { randomUUID } from 'node:crypto';
 
 let db: PGlite;
+let administratorsAfterMigrations: number;
 const owner = '20000000-0000-4000-8000-000000000001',
   other = '20000000-0000-4000-8000-000000000002',
   admin = '20000000-0000-4000-8000-000000000003',
@@ -98,6 +99,9 @@ beforeAll(async () => {
   await db.exec(await readFile('supabase/migrations/20261119175055_managed_content.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261120145745_showroom_catalog.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261121171055_static_orders.sql', 'utf8'));
+  administratorsAfterMigrations = (
+    await db.query<{ count: number }>('select count(*)::int as count from private.administrator')
+  ).rows[0].count;
   for (const [id, email, verified] of [
     [owner, 'owner@example.test', true],
     [other, 'other@example.test', true],
@@ -353,6 +357,48 @@ describe('Transactional project workflow — real PostgreSQL SQL', () => {
   });
 });
 describe('Isolation and hostile direct API use', () => {
+  it('creates the admin RPC without promoting any user and authorizes only the designated account', async () => {
+    expect(administratorsAfterMigrations).toBe(0);
+    for (const uid of [owner, other, unverified, admin]) {
+      await as(uid);
+      const result = await db.query<{ allowed: boolean }>('select public.is_admin() as allowed');
+      expect(result.rows[0].allowed).toBe(uid === admin);
+    }
+    await as(null, 'anon');
+    await expect(db.query('select public.is_admin()')).rejects.toThrow(/permission denied/);
+  });
+  it('prevents a second administrator and hides every private table from browser roles', async () => {
+    await db.exec('reset role');
+    await expect(
+      db.query('insert into private.administrator(user_id) values($1)', [owner]),
+    ).rejects.toThrow(/unique constraint/);
+    await expect(
+      db.query('insert into private.administrator(singleton,user_id) values(false,$1)', [owner]),
+    ).rejects.toThrow(/check constraint/);
+    for (const uid of [owner, admin]) {
+      await as(uid);
+      for (const table of ['administrator', 'settings', 'rate_limits', 'email_outbox']) {
+        await expect(db.query(`select * from private.${table}`)).rejects.toThrow(
+          /permission denied/,
+        );
+      }
+    }
+  });
+  it('enables RLS on all application tables and keeps privileged functions outside public', async () => {
+    await db.exec('reset role');
+    const tables = await db.query<{ name: string; protected: boolean }>(`
+      select n.nspname||'.'||c.relname as name, c.relrowsecurity as protected
+      from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      where n.nspname in ('public','private') and c.relkind in ('r','p')
+    `);
+    expect(tables.rows).toHaveLength(21);
+    expect(tables.rows.filter((table) => !table.protected)).toEqual([]);
+    const privileged = await db.query(`
+      select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.prosecdef
+    `);
+    expect(privileged.rows).toEqual([]);
+  });
   it('keeps the selected model snapshot and existing draft after the catalog changes', async () => {
     const custom = {
       ...templates[0],
@@ -384,11 +430,24 @@ describe('Isolation and hostile direct API use', () => {
     ).rejects.toThrow(/Modelo indisponível/);
   });
   it('hides all project data from a second client', async () => {
-    const id = await proposed();
+    const id = await approved();
     await as(owner);
     await cmd('message', { id, body: 'Uma mensagem privada.' });
-    await as(other);
-    for (const table of [
+    await cmd('read_messages', { id });
+    const path = `${id}/${owner}/${randomUUID()}.png`;
+    await db.query(
+      "insert into storage.objects(bucket_id,name,metadata) values('project-files',$1,$2)",
+      [path, JSON.stringify({ size: 20, mimetype: 'image/png' })],
+    );
+    await cmd('register_file', {
+      id,
+      path,
+      name: 'anexo.png',
+      size: 20,
+      mime: 'image/png',
+      purpose: 'message',
+    });
+    const privateProjectTables = [
       'projects',
       'quotes',
       'payments',
@@ -396,8 +455,18 @@ describe('Isolation and hostile direct API use', () => {
       'files',
       'status_history',
       'customizations',
-    ])
-      expect(await rows(table)).toHaveLength(0);
+      'notifications',
+      'project_reads',
+      'audit_log',
+    ];
+    // Each protected table must contain data so empty fixtures cannot mask an RLS failure.
+    await db.exec('reset role');
+    for (const table of privateProjectTables) expect((await rows(table)).length).toBeGreaterThan(0);
+    await as(other);
+    for (const table of privateProjectTables) expect(await rows(table)).toHaveLength(0);
+    expect((await rows('profiles')).map((profile) => profile.id)).toEqual([other]);
+    expect((await rows('clients')).map((client) => client.id)).toEqual([other]);
+    expect((await db.query('select * from storage.objects')).rows).toHaveLength(0);
     await expect(cmd('message', { id, body: 'Tentativa de acesso' })).rejects.toThrow(/Acesso/);
     await expect(db.query('select public.get_pix($1)', [id])).rejects.toThrow(/Acesso/);
   });
