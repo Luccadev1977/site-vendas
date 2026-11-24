@@ -12,15 +12,13 @@ import {
 } from '../src/lib/auth-flow';
 describe('Account and confirmation security', () => {
   it('exchanges a PKCE code through the SDK and rejects a response without a session', async () => {
-    const exchangeCodeForSession = vi
-      .fn()
-      .mockResolvedValue({
-        data: {
-          user: { email_confirmed_at: '2026-11-24', email: 'cliente@example.test' },
-          session: { access_token: 'local-fixture' },
-        },
-        error: null,
-      });
+    const exchangeCodeForSession = vi.fn().mockResolvedValue({
+      data: {
+        user: { email_confirmed_at: '2026-11-24', email: 'cliente@example.test' },
+        session: { access_token: 'local-fixture' },
+      },
+      error: null,
+    });
     const auth = { exchangeCodeForSession, verifyOtp: vi.fn() } as AuthVerifier;
     await expect(
       verifyAuthCallback(auth, { kind: 'code', code: 'local-code', type: 'email' }),
@@ -47,23 +45,33 @@ describe('Account and confirmation security', () => {
       expect(validEmail(value)).toBe(false);
     expect(validEmail('cliente@example.test')).toBe(true);
   });
-  it('parses the real template link under the Pages basePath and removes its token', async () => {
-    const template = await readFile('supabase/templates/confirmation.html', 'utf8');
-    expect(template).not.toContain('supabase');
-    expect(template).toContain('{{ .TokenHash }}');
-    const hash = 'a'.repeat(64),
-      redirect =
-        'https://luccadev1977.github.io/site-vendas/conta/?callback=1&next=%2Fstudio%2Frestaurantes-elegante';
-    const href = /href="([^"]+)"/
-      .exec(template)![1]
-      .replace('{{ .RedirectTo }}', redirect)
-      .replace('{{ .TokenHash }}', hash)
-      .replaceAll('&amp;', '&');
-    const parsed = readAuthCallback(href);
-    expect(parsed.callback).toEqual({ kind: 'token', tokenHash: hash, type: 'email' });
-    expect(parsed.cleanURL).toBe('/site-vendas/conta/?next=%2Fstudio%2Frestaurantes-elegante');
-    expect(parsed.cleanURL).not.toContain(hash);
-  });
+  it.each([
+    { templateName: 'confirmation', type: 'email' },
+    { templateName: 'recovery', type: 'recovery' },
+  ])(
+    'keeps both $templateName email links compatible with the Pages callback',
+    async ({ templateName, type }) => {
+      const template = await readFile(`supabase/templates/${templateName}.html`, 'utf8');
+      expect(template).not.toMatch(/supabase|opt out of these emails/i);
+      const links = [...template.matchAll(/href="([^"]+)"/g)]
+        .map((match) => match[1])
+        .filter((href) => href.includes('{{ .TokenHash }}'));
+      expect(links).toHaveLength(2);
+      const hash = 'a'.repeat(64),
+        redirect =
+          'https://luccadev1977.github.io/site-vendas/conta/?callback=1&next=%2Fstudio%2Frestaurantes-elegante';
+      for (const link of links) {
+        const href = link
+          .replace('{{ .RedirectTo }}', redirect)
+          .replace('{{ .TokenHash }}', hash)
+          .replaceAll('&amp;', '&');
+        const parsed = readAuthCallback(href);
+        expect(parsed.callback).toEqual({ kind: 'token', tokenHash: hash, type });
+        expect(parsed.cleanURL).toBe('/site-vendas/conta/?next=%2Fstudio%2Frestaurantes-elegante');
+        expect(parsed.cleanURL).not.toContain(hash);
+      }
+    },
+  );
   it('supports legacy token-hash query links and recovery/PKCE callbacks without trusting success flags', () => {
     expect(readAuthCallback('https://example.test/conta?confirmed=1').callback).toBeNull();
     expect(

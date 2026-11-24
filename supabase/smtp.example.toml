@@ -1,0 +1,14 @@
+# Opt-in reference ONLY. This file is not loaded by the application or CI.
+# Configure these fields in the Supabase Auth SMTP dashboard after verifying
+# the sending domain and sender with your provider. See docs/auth-email.md.
+# For CLI use, add this block to an ignored, partial Supabase config and load
+# supabase/.env.smtp.local in that CLI process only. Review config diff first.
+# Use the TLS port supplied by your provider; 587 below is only an example.
+[auth.email.smtp]
+enabled = true
+host = "env(SUPABASE_AUTH_SMTP_HOST)"
+port = 587
+user = "env(SUPABASE_AUTH_SMTP_USER)"
+pass = "env(SUPABASE_AUTH_SMTP_PASSWORD)"
+admin_email = "env(SUPABASE_AUTH_SMTP_FROM_EMAIL)"
+sender_name = "Nexo Studio"

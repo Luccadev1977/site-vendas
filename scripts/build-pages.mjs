@@ -106,6 +106,7 @@ for (const name of [
   'CRON_SECRET',
 ])
   delete env[name];
+for (const name of Object.keys(env)) if (name.startsWith('SUPABASE_AUTH_SMTP_')) delete env[name];
 console.log(
   'Building isolated GitHub Pages export. Server routes and proxy are excluded; original sources are unchanged.',
 );

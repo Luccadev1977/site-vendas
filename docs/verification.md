@@ -1,5 +1,15 @@
 # Registro de verificação
 
+## Identidade de e-mails e preparação SMTP — 24/11/2026
+
+Consultados o changelog oficial de 03/06/2026, a documentação SMTP/templates/CLI atual e a organização do projeto pelo conector: plano Free. A CLI 3.2.0, em `config pull --dry-run` com configuração parcial ignorada, confirmou SMTP próprio desativado e host ausente, sem escrita remota. A consulta pública de Auth respondeu 200, com e-mail habilitado e `mailer_autoconfirm = false`; `/site-vendas/conta/` respondeu 200. Nenhuma configuração remota, credencial ou migration foi alterada nesta entrega.
+
+Templates Nexo de confirmação e recuperação preparados com botão, URL alternativa em fragmento, aviso de segurança e privacidade. A integração optativa tem referências de ambiente em `supabase/smtp.example.toml` e placeholders vazios em `supabase/smtp.env.example`. Não há remoção/ocultação de rodapé do serviço padrão. O build estático exclui as variáveis privadas de Auth SMTP do processo filho.
+
+68 testes passaram, incluindo os links primário/alternativo dos dois templates, preservação do tipo da ação e limpeza do hash no callback. Lint, TypeScript, formatação, builds Node e Pages aprovados; verificador de exportação aprovou 776 arquivos, 42 demos, 42 estúdios e 3061 referências locais. As prévias foram geradas por `pnpm email:preview`, somente com hash fictício, sem envio de mensagem ou criação de conta.
+
+Navegador: confirmação em 320, 390, 768 e 1200 px sem excesso horizontal; recuperação em 390 px. [Prévia de confirmação](screenshots/confirmation-email-preview.jpg) e [prévia de recuperação](screenshots/recovery-email-preview.jpg). São renderizações locais em navegador; entrega SMTP e renderização em clientes reais ainda dependem de provedor/domínio/remetente verificados. Enquanto o SMTP próprio não for ativado e os templates publicados, os e-mails enviados pelo serviço padrão continuam com seu conteúdo e rodapé originais.
+
 ## Implantação SQL autorizada — 24/11/2026
 
 O diagnóstico somente em leitura confirmou zero migrations, tabelas/funções da aplicação e buckets no projeto `dhgyfncmvwnlehfelsth`. A RPC `is_admin` retornava HTTP 404/PGRST202; `projects` e `site_settings`, 404/PGRST205. A função pública e sua implementação privada já estavam definidas na primeira migration. Não foi necessário modificar os cinco arquivos SQL.

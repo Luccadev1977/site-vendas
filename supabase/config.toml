@@ -8,6 +8,10 @@ minimum_password_length = 8
 [auth.email]
 enable_confirmations = true
 
+# Custom templates below are prepared, not active on the default Free SMTP.
+# Activate a verified custom SMTP provider before publishing them.
+# The opt-in SMTP reference is smtp.example.toml; never enable empty credentials.
+
 [auth.email.template.confirmation]
 subject = "Confirme sua conta no Nexo Studio"
 content_path = "./supabase/templates/confirmation.html"
