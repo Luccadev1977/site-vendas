@@ -55,6 +55,7 @@ for (const file of [
   'globals.css',
   'showroom.css',
   'commerce.css',
+  'auth.css',
   'not-found.tsx',
   'error.tsx',
   'loading.tsx',

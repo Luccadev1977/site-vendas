@@ -16,8 +16,9 @@ export function WhatsAppIcon() {
 export function FloatingWhatsApp() {
   const [settings, setSettings] = useState<WhatsAppSettings>(defaultWhatsApp);
   const path = routeWithoutBasePath(usePathname());
+  const hidden = /^\/(admin|painel|conta)(\/|$)/.test(path);
   useEffect(() => {
-    if (!browserConfigured()) return;
+    if (hidden || !browserConfigured()) return;
     let active = true;
     const load = async () => {
       const { data, error } = await browserSupabase()
@@ -33,10 +34,10 @@ export function FloatingWhatsApp() {
       active = false;
       window.removeEventListener('nexo-refresh', load);
     };
-  }, []);
+  }, [hidden]);
   const model = /^\/(demo|studio)\/([^/]+)/.exec(path);
   const href = whatsappURL(settings, model ? routeTemplate(model[2])?.name : undefined);
-  if (!href || /^\/(admin|painel|conta)(\/|$)/.test(path)) return null;
+  if (!href || hidden) return null;
   return (
     <a
       className={`whatsapp-float ${path.startsWith('/studio/') ? 'in-studio' : ''}`}

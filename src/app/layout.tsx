@@ -3,6 +3,7 @@ import { Header, Footer } from '@/components/chrome';
 import './globals.css';
 import './showroom.css';
 import './commerce.css';
+import './auth.css';
 import { BrowserRuntime } from '@/components/browser-runtime';
 import { FloatingWhatsApp } from '@/components/whatsapp';
 export const metadata: Metadata = {

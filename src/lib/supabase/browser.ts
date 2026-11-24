@@ -19,5 +19,6 @@ export function browserSupabase() {
     });
     return pagesClient;
   }
-  return createBrowserClient(url, key);
+  // The account screen owns token consumption in both targets; avoid duplicate PKCE exchanges.
+  return createBrowserClient(url, key, { auth: { detectSessionInUrl: false } });
 }

@@ -91,23 +91,22 @@ O CLI pede autenticação/confirmação do alvo remoto. Não coloque tokens ou a
 
 No Supabase Authentication:
 
-- Ative o provedor de e-mail e a confirmação de e-mail. **Desative logins anônimos.** Configure senha mínima de 12 caracteres e as proteções e limites do serviço.
-- Em URL Configuration, use Site URL `https://luccadev1977.github.io/site-vendas/` e autorize `https://luccadev1977.github.io/site-vendas/conta/**` para o callback estático (incluindo parâmetros). Para a versão Node, autorize `http://127.0.0.1:3000/auth/confirm**`. Use projeto separado para testes.
+- Ative o provedor de e-mail e a confirmação de e-mail. **Desative logins anônimos.** Configure senha mínima de **8 caracteres** e as proteções e limites do serviço. Cadastro e recuperação pedem confirmação de senha e permitem mostrar/ocultar os campos, sem limite artificial de comprimento no frontend.
+- Em URL Configuration, use Site URL `https://luccadev1977.github.io/site-vendas/` e autorize `https://luccadev1977.github.io/site-vendas/conta/**` para o callback estático (incluindo parâmetros). Para desenvolvimento Node, autorize `http://127.0.0.1:3000/conta/**` e `http://localhost:3000/conta/**`. Use projeto separado para testes.
 - Configure SMTP próprio para os e-mails de autenticação. Os campos SMTP da aplicação abaixo são para notificações de projetos, não substituem o SMTP do Auth.
-- Em Email Templates, use links por token hash. A aplicação envia `.RedirectTo` contendo `?next=...`; por isso os parâmetros abaixo são adicionados com `&amp;`.
+- Os templates personalizados prontos ficam em `supabase/templates/`. Em 24/11/2026, o provedor recusou ativá-los no projeto gratuito com SMTP padrão (`entitlement_required`). Domínio, SMTP próprio e homologação de entrega ainda estão pendentes. A senha mínima de 8, Site URL e URLs de retorno foram aplicadas separadamente pela CLI e verificadas. Consulte [o passo a passo e o estado real do envio](docs/auth-email.md).
+- Após habilitar SMTP, configure links por token hash no fragmento. A aplicação envia `.RedirectTo` apontando para `/conta/`; o callback client-side remove o token da URL e só confirma após resposta válida do Supabase.
 
 Confirmação de cadastro:
 
 ```html
-<a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=signup">Confirmar meu e-mail</a>
+<a href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=email">CONFIRMAR MINHA CONTA</a>
 ```
 
 Recuperação:
 
 ```html
-<a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=recovery"
-  >Redefinir minha senha</a
->
+<a href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=recovery">Redefinir minha senha</a>
 ```
 
 A rota também aceita o callback PKCE com `code`. O destino é validado como caminho local para impedir redirecionamentos externos. Verifique cadastro e recuperação em outro navegador/dispositivo durante a homologação. Referências: [SSR Supabase](https://supabase.com/docs/guides/auth/server-side/creating-a-client), [templates de e-mail](https://supabase.com/docs/guides/auth/auth-email-templates).
