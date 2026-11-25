@@ -15,7 +15,8 @@ export async function adminData() {
     readAll<ProjectSummary>(
       auth.db
         .from('projects')
-        .select('id,number,client_id,template_id,name,status,brief,created_at,updated_at')
+        // Compatible with the original schema until the owner approves the migration.
+        .select('*')
         .order('created_at', { ascending: false })
         .order('id'),
     ),

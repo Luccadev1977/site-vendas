@@ -2,15 +2,22 @@ import type { Command } from './validation';
 import { commandSchema } from './validation';
 import { isGitHubPages } from './deployment';
 import { browserSupabase } from './supabase/browser';
+import { isOrderAction, pendingOrderMigrationMessage } from './order-lifecycle';
 export async function command(input: Command) {
   if (isGitHubPages) {
     const parsed = commandSchema.parse(input);
     const db = browserSupabase();
-    const result =
-      parsed.action === 'portfolio'
+    const result = isOrderAction(parsed.action)
+      ? await db.rpc('manage_order', { action: parsed.action, payload: parsed.payload })
+      : parsed.action === 'portfolio'
         ? await db.rpc('save_portfolio', { payload: parsed.payload })
         : await db.rpc('command', { action: parsed.action, payload: parsed.payload });
     if (result.error) {
+      if (
+        isOrderAction(parsed.action) &&
+        ['PGRST202', 'PGRST205', '42883', '42P01', '42703'].includes(result.error.code)
+      )
+        throw new Error(pendingOrderMigrationMessage);
       if (['PGRST202', 'PGRST205', '42883', '42P01'].includes(result.error.code))
         throw new Error(
           'Envio indisponível: o banco da plataforma ainda precisa ser configurado pelo responsável. Nenhum pedido foi confirmado.',

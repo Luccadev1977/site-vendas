@@ -29,10 +29,21 @@ export function FloatingWhatsApp() {
       if (active && !error && data) setSettings(data);
     };
     void load();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 20000);
+    const focus = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
     window.addEventListener('nexo-refresh', load);
+    window.addEventListener('focus', focus);
+    document.addEventListener('visibilitychange', focus);
     return () => {
       active = false;
       window.removeEventListener('nexo-refresh', load);
+      window.clearInterval(interval);
+      window.removeEventListener('focus', focus);
+      document.removeEventListener('visibilitychange', focus);
     };
   }, [hidden]);
   const model = /^\/(demo|studio)\/([^/]+)/.exec(path);
@@ -48,6 +59,7 @@ export function FloatingWhatsApp() {
       title="Fale com o Nexo Studio"
     >
       <WhatsAppIcon />
+      <span>WhatsApp</span>
     </a>
   );
 }

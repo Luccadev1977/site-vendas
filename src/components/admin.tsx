@@ -40,6 +40,13 @@ import { isGitHubPages } from '@/lib/deployment';
 import { routeWithoutBasePath } from '@/lib/deployment';
 import { csvCell } from '@/lib/csv';
 import { routeTemplate } from '@/lib/template-routes';
+import {
+  orderFolder,
+  orderLifecycleReady,
+  pendingOrderMigrationMessage,
+  type OrderFolder,
+} from '@/lib/order-lifecycle';
+import { OrderActions } from './order-actions';
 function catalogTemplate(item: Template | Category | Testimonial): item is Template {
   return 'category_id' in item && 'content' in item;
 }
@@ -113,9 +120,15 @@ export function AdminOverview({
     [status, setStatus] = useState(''),
     [search, setSearch] = useState('');
   const [asOf] = useState(() => Date.now());
+  const [folder, setFolder] = useState<OrderFolder>('active');
+  const lifecycleReady = orderLifecycleReady(projects);
+  const [feedback, setFeedback] = useState<{ message: string; error: boolean } | null>(null);
   const since = period === 'all' ? 0 : asOf - Number(period) * 86400000;
   const selected = projects.filter(
-    (p) => p.status !== 'draft' && new Date(p.created_at).getTime() >= since,
+    (p) =>
+      p.status !== 'draft' &&
+      new Date(p.created_at).getTime() >= since &&
+      orderFolder(p) === (orders ? folder : 'active'),
   );
   const confirmed = payments.filter(
     (p) => p.status === 'confirmed' && new Date(p.confirmed_at!).getTime() >= since,
@@ -370,6 +383,45 @@ export function AdminOverview({
           <div className="panel-title">
             <h2>{orders ? 'Todos os pedidos' : 'Projetos em movimento'}</h2>
           </div>
+          {orders && (
+            <>
+              <div className="tabs order-folders" role="group" aria-label="Pasta dos pedidos">
+                {(
+                  [
+                    ['active', 'Ativos'],
+                    ['archived', 'Arquivados'],
+                    ['trash', 'Lixeira'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    className={folder === key ? 'active' : ''}
+                    aria-pressed={folder === key}
+                    disabled={!lifecycleReady && key !== 'active'}
+                    onClick={() => {
+                      setFolder(key);
+                      setFeedback(null);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="studio-help">
+                {lifecycleReady
+                  ? 'Arquivamento e lixeira organizam a lista administrativa. O status comercial e os registros financeiros permanecem preservados.'
+                  : pendingOrderMigrationMessage}
+              </p>
+              {feedback && (
+                <p
+                  className={`notice ${feedback.error ? 'error' : 'success'}`}
+                  role={feedback.error ? 'alert' : 'status'}
+                >
+                  {feedback.message}
+                </p>
+              )}
+            </>
+          )}
           <div className="admin-toolbar">
             <input
               aria-label="Buscar pedido"
@@ -400,7 +452,13 @@ export function AdminOverview({
                   <th>Projeto</th>
                   <th>Cliente</th>
                   <th>Status</th>
-                  <th>Recebido em</th>
+                  <th>
+                    {orders && folder === 'trash'
+                      ? 'Excluído em'
+                      : orders && folder === 'archived'
+                        ? 'Arquivado em'
+                        : 'Recebido em'}
+                  </th>
                   <th>Detalhes</th>
                 </tr>
               </thead>
@@ -418,9 +476,25 @@ export function AdminOverview({
                     <td>
                       <StatusBadge status={p.status} />
                     </td>
-                    <td>{date(p.created_at)}</td>
                     <td>
-                      <Link href={projectHref(p.id, true)}>Abrir projeto</Link>
+                      {date(
+                        (orders && folder === 'trash'
+                          ? p.deleted_at
+                          : orders && folder === 'archived'
+                            ? p.archived_at
+                            : p.created_at) || p.created_at,
+                      )}
+                    </td>
+                    <td>
+                      {orders ? (
+                        <OrderActions
+                          project={p}
+                          enabled={lifecycleReady}
+                          onFeedback={(message, error = false) => setFeedback({ message, error })}
+                        />
+                      ) : (
+                        <Link href={projectHref(p.id, true)}>Abrir projeto</Link>
+                      )}
                     </td>
                   </tr>
                 ))}

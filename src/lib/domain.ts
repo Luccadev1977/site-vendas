@@ -90,6 +90,8 @@ export type Project = {
   brief: Brief | null;
   created_at: string;
   updated_at: string;
+  archived_at?: string | null;
+  deleted_at?: string | null;
 };
 export type Quote = {
   id: string;
@@ -179,6 +181,8 @@ export type ProjectSummary = Pick<
   | 'brief'
   | 'created_at'
   | 'updated_at'
+  | 'archived_at'
+  | 'deleted_at'
 >;
 export type QuoteSummary = Pick<Quote, 'id' | 'project_id' | 'amount' | 'status' | 'created_at'>;
 export type ClientProject = Omit<ProjectSummary, 'brief'> & { template_snapshot: Template };

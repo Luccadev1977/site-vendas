@@ -74,6 +74,14 @@ export const briefSchema = z
 const uuid = z.uuid();
 export const commandSchema = z.discriminatedUnion('action', [
   z.object({
+    action: z.enum(['archive_order', 'trash_order', 'restore_order']),
+    payload: z.object({ id: uuid }).strict(),
+  }),
+  z.object({
+    action: z.literal('purge_order'),
+    payload: z.object({ id: uuid, confirmation: z.string().trim().min(1).max(80) }).strict(),
+  }),
+  z.object({
     action: z.literal('whatsapp'),
     payload: z
       .object({

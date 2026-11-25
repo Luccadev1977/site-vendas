@@ -1,5 +1,17 @@
 # Registro de verificação
 
+## Pedidos e WhatsApp — publicação com banco anterior, 25/11/2026
+
+Preparados arquivamento, lixeira, restauração e exclusão definitiva protegida na migration `20261125133506_order_lifecycle.sql`. O proprietário autorizou o envio ao GitHub, **sem autorizar sua aplicação no Supabase**. O SQL permanece pendente. Os seis arquivos SQL foram executados somente no PostgreSQL temporário dos testes, incluindo fixtures descartáveis; pedidos reais não foram arquivados nem excluídos.
+
+78 testes aprovados, incluindo retenção de propostas/pagamentos/arquivos/mensagens, administrador confirmado, RLS, restauração, confirmação explícita, histórico integral na auditoria e bloqueio de novos relacionamentos com cascata. A verificação de compatibilidade cobre registros do schema anterior, schema parcial, campos novos nulos e lista vazia.
+
+Lint, TypeScript e builds completo/Pages passaram na entrega com a proteção de compatibilidade. O verificador estático aprovou as rotas e referências locais, preservando os 42 modelos. A auditoria do índice Git não encontrou credenciais privadas; arquivos de ambiente e ferramentas locais permaneceram ignorados.
+
+Para publicação antes da migration, o painel lê `SELECT *` e identifica os campos na resposta normal. Com registros antigos, mantém Ativos/Abrir projeto, desativa Arquivados/Lixeira e omite comandos de alteração. Não executa consultas a colunas ausentes nem sondagem de RPC inexistente. Frontend e API também tratam indisponibilidade de schema sem confirmar uma ação. O workflow Pages não executa migrations remotas.
+
+WhatsApp: ícone e texto visível, contato exclusivamente em `site_settings`, nova aba, mensagem codificada e atualização por foco/evento ou polling de 20 segundos. Mantidas as proteções de contato inválido, privacidade administrativa, área segura, modais e formulários. O contato comercial informado pelo proprietário foi configurado na entrega anterior desta funcionalidade, sem gravá-lo em componentes ou exemplos do repositório.
+
 ## Identidade de e-mails e preparação SMTP — 24/11/2026
 
 Consultados o changelog oficial de 03/06/2026, a documentação SMTP/templates/CLI atual e a organização do projeto pelo conector: plano Free. A CLI 3.2.0, em `config pull --dry-run` com configuração parcial ignorada, confirmou SMTP próprio desativado e host ausente, sem escrita remota. A consulta pública de Auth respondeu 200, com e-mail habilitado e `mailer_autoconfirm = false`; `/site-vendas/conta/` respondeu 200. Nenhuma configuração remota, credencial ou migration foi alterada nesta entrega.

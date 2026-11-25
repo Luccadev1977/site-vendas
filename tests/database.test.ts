@@ -3,6 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { readFile } from 'node:fs/promises';
 import { categories, defaultConfig, templates } from '../src/lib/catalog';
 import { randomUUID } from 'node:crypto';
+import { isOrderAction } from '../src/lib/order-lifecycle';
 
 let db: PGlite;
 let administratorsAfterMigrations: number;
@@ -45,7 +46,9 @@ async function cmd(action: string, payload: unknown) {
     }
   }
   const r = await db.query<{ result: Record<string, unknown> }>(
-    'select public.command($1,$2::jsonb) as result',
+    isOrderAction(action)
+      ? 'select public.manage_order($1,$2::jsonb) as result'
+      : 'select public.command($1,$2::jsonb) as result',
     [action, JSON.stringify(payload)],
   );
   return r.rows[0].result;
@@ -99,6 +102,7 @@ beforeAll(async () => {
   await db.exec(await readFile('supabase/migrations/20261119175055_managed_content.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261120145745_showroom_catalog.sql', 'utf8'));
   await db.exec(await readFile('supabase/migrations/20261121171055_static_orders.sql', 'utf8'));
+  await db.exec(await readFile('supabase/migrations/20261125133506_order_lifecycle.sql', 'utf8'));
   administratorsAfterMigrations = (
     await db.query<{ count: number }>('select count(*)::int as count from private.administrator')
   ).rows[0].count;
@@ -126,6 +130,175 @@ afterAll(async () => {
 });
 
 describe('Transactional project workflow — real PostgreSQL SQL', () => {
+  it('archives, trashes and restores without changing commercial status or original content', async () => {
+    const id = await submitted();
+    const before = (await rows('projects'))[0];
+    await as(admin);
+    await cmd('archive_order', { id });
+    await cmd('archive_order', { id });
+    const archived = (await rows('projects'))[0];
+    expect(archived.archived_at).toBeTruthy();
+    for (const key of [
+      'status',
+      'config',
+      'brief',
+      'template_snapshot',
+      'created_at',
+      'updated_at',
+    ])
+      expect(archived[key]).toEqual(before[key]);
+    expect((await rows('audit_log')).filter((a) => a.action === 'archive_order')).toHaveLength(1);
+    await cmd('trash_order', { id });
+    expect((await rows('projects'))[0].deleted_at).toBeTruthy();
+    await expect(cmd('archive_order', { id })).rejects.toThrow(/restaure/);
+    await cmd('restore_order', { id });
+    const restored = (await rows('projects'))[0];
+    expect(restored.archived_at).toBeNull();
+    expect(restored.deleted_at).toBeNull();
+    expect(restored.status).toBe(before.status);
+    await as(owner);
+    expect(await rows('projects')).toHaveLength(1);
+    await as(other);
+    expect(await rows('projects')).toHaveLength(0);
+  });
+  it('restricts lifecycle RPCs and direct lifecycle updates to the authorized boundary', async () => {
+    const id = await submitted();
+    for (const uid of [owner, other, unverified]) {
+      await as(uid);
+      for (const action of ['archive_order', 'trash_order', 'restore_order', 'purge_order'])
+        await expect(cmd(action, { id, confirmation: 'anything' })).rejects.toThrow(
+          /administrador/,
+        );
+      await expect(
+        db.query('update public.projects set deleted_at=now() where id=$1', [id]),
+      ).rejects.toThrow(/permission denied/);
+    }
+    await as(null, 'anon');
+    await expect(cmd('archive_order', { id })).rejects.toThrow(/permission denied/);
+    await db.exec('reset role');
+    await db.query('update auth.users set email_confirmed_at=null where id=$1', [admin]);
+    try {
+      await as(admin);
+      await expect(cmd('archive_order', { id })).rejects.toThrow(/Confirme/);
+    } finally {
+      await db.exec('reset role');
+      await db.query('update auth.users set email_confirmed_at=now() where id=$1', [admin]);
+    }
+  });
+  it('requires trash and typed confirmation, then preserves audit, notifications and outbox on eligible purge', async () => {
+    const id = await submitted();
+    await cmd('cancel', { id });
+    await as(admin);
+    const number = (await rows('projects'))[0].number;
+    await expect(cmd('purge_order', { id, confirmation: number })).rejects.toThrow(/lixeira/);
+    await cmd('trash_order', { id });
+    await expect(cmd('purge_order', { id, confirmation: 'wrong' })).rejects.toThrow(/confirmação/);
+    const originalHistory = await rows('status_history');
+    await db.exec('reset role');
+    const before = await db.query<{ notifications: number; outbox: number }>(
+      'select (select count(*)::int from public.notifications) as notifications,(select count(*)::int from private.email_outbox) as outbox',
+    );
+    await as(admin);
+    await cmd('purge_order', { id, confirmation: number });
+    expect(await rows('projects')).toHaveLength(0);
+    expect(await rows('customizations')).toHaveLength(0);
+    const audit = await rows('audit_log');
+    expect(
+      audit.some(
+        (a) =>
+          a.action === 'purge_order' &&
+          (a.detail as { order_number: string }).order_number === number,
+      ),
+    ).toBe(true);
+    const disposal = audit.find((a) => a.action === 'purge_order')!.detail as {
+      timeline: { id: string; note: string; actor_id: string }[];
+    };
+    expect(
+      disposal.timeline.map((h) => ({ id: h.id, note: h.note, actor_id: h.actor_id })),
+    ).toEqual(originalHistory.map((h) => ({ id: h.id, note: h.note, actor_id: h.actor_id })));
+    await db.exec('reset role');
+    const after = await db.query<{ notifications: number; outbox: number }>(
+      'select (select count(*)::int from public.notifications) as notifications,(select count(*)::int from private.email_outbox) as outbox',
+    );
+    expect(after.rows).toEqual(before.rows);
+  });
+  it('blocks future cascading relationships before deleting any retained data', async () => {
+    const id = await submitted();
+    await cmd('cancel', { id });
+    await as(admin);
+    await cmd('trash_order', { id });
+    const number = (await rows('projects'))[0].number;
+    await db.exec(
+      'reset role; create table public.retention_fixture(project_id uuid references public.projects(id) on delete cascade)',
+    );
+    try {
+      await db.query('insert into public.retention_fixture values($1)', [id]);
+      await as(admin);
+      await expect(cmd('purge_order', { id, confirmation: number })).rejects.toThrow(
+        /novos relacionamentos/,
+      );
+      expect(await rows('projects')).toHaveLength(1);
+      await db.exec('reset role');
+      expect((await db.query('select * from public.retention_fixture')).rows).toHaveLength(1);
+    } finally {
+      await db.exec('reset role; drop table public.retention_fixture');
+    }
+  });
+  it('preserves quotes and payment records when permanent deletion is requested', async () => {
+    const id = await approved();
+    await db.exec('reset role'); // Local fixture: a closed order with existing financial history.
+    await db.query("update public.projects set status='cancelled' where id=$1", [id]);
+    await as(admin);
+    await cmd('trash_order', { id });
+    const number = (await rows('projects'))[0].number;
+    await expect(cmd('purge_order', { id, confirmation: number })).rejects.toThrow(/financeiros/);
+    expect(await rows('payments')).toHaveLength(1);
+    expect(await rows('quotes')).toHaveLength(1);
+    await cmd('restore_order', { id });
+    expect((await rows('projects'))[0].status).toBe('cancelled');
+  });
+  it.each([false, true])(
+    'preserves Storage objects and registered files (registered=%s)',
+    async (registered) => {
+      const id = await submitted(),
+        path = `${id}/${owner}/${randomUUID()}.png`;
+      await db.query(
+        "insert into storage.objects(bucket_id,name,metadata) values('project-files',$1,$2)",
+        [path, JSON.stringify({ size: 20, mimetype: 'image/png' })],
+      );
+      if (registered)
+        await cmd('register_file', {
+          id,
+          path,
+          name: 'arquivo.png',
+          size: 20,
+          mime: 'image/png',
+          purpose: 'message',
+        });
+      await cmd('cancel', { id });
+      await as(admin);
+      await cmd('trash_order', { id });
+      const number = (await rows('projects'))[0].number;
+      await expect(cmd('purge_order', { id, confirmation: number })).rejects.toThrow(
+        /arquivos ou comprovantes/,
+      );
+      expect((await db.query('select * from storage.objects')).rows).toHaveLength(1);
+      expect(await rows('files')).toHaveLength(registered ? 1 : 0);
+    },
+  );
+  it('preserves communication and refuses permanent deletion of ongoing orders', async () => {
+    const id = await submitted();
+    await cmd('message', { id, body: 'Informação operacional importante.' });
+    await as(admin);
+    await cmd('trash_order', { id });
+    const number = (await rows('projects'))[0].number;
+    await expect(cmd('purge_order', { id, confirmation: number })).rejects.toThrow(/encerre/);
+    await as(owner);
+    await cmd('cancel', { id });
+    await as(admin);
+    await expect(cmd('purge_order', { id, confirmation: number })).rejects.toThrow(/mensagens/);
+    expect(await rows('messages')).toHaveLength(1);
+  });
   it('blocks client attestation of uploaded files and direct privileged bypasses', async () => {
     await expect(db.query("select public.command('register_file','{}')")).rejects.toThrow(
       /Edge Function/,

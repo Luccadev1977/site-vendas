@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { session } from '@/lib/supabase/server';
 import { commandSchema } from '@/lib/validation';
+import { isOrderAction, pendingOrderMigrationMessage } from '@/lib/order-lifecycle';
 import { failure, sameOrigin, readLimited } from '@/lib/http';
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return failure('Origem não autorizada.', 403);
@@ -31,18 +32,29 @@ export async function POST(request: Request) {
         'template',
         'testimonial',
         'portfolio',
-      ].includes(parsed.data.action) &&
+      ]
+        .concat(['archive_order', 'trash_order', 'restore_order', 'purge_order'])
+        .includes(parsed.data.action) &&
       !auth.admin
     )
       return failure('Acesso exclusivo do administrador.', 403);
-    const { data, error } =
-      parsed.data.action === 'portfolio'
+    const { data, error } = isOrderAction(parsed.data.action)
+      ? await auth.db.rpc('manage_order', {
+          action: parsed.data.action,
+          payload: parsed.data.payload,
+        })
+      : parsed.data.action === 'portfolio'
         ? await auth.db.rpc('save_portfolio', { payload: parsed.data.payload })
         : await auth.db.rpc('command', {
             action: parsed.data.action,
             payload: parsed.data.payload,
           });
     if (error) {
+      if (
+        isOrderAction(parsed.data.action) &&
+        ['PGRST202', 'PGRST205', '42883', '42P01', '42703'].includes(error.code)
+      )
+        return failure(pendingOrderMigrationMessage, 503);
       const safe =
         /^(Limite|Acesso|Transição|Projeto|Proposta|Pagamento|Arquivo|Dados|Modelo|Confirme|Configure|Operação|Mensagem)/.test(
           error.message,

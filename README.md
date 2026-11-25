@@ -128,6 +128,14 @@ O cliente escolhe um modelo, personaliza e salva. O envio congela o briefing e a
 
 Enviar comprovante muda o pagamento para `review`, nunca para confirmado. Somente após conferir o recebimento no banco, o administrador usa **Confirmar recebimento no banco**. A partir daí o projeto pode passar por desenvolvimento, revisão, conclusão e entrega. As transições são verificadas dentro de uma transação SQL e registradas no histórico. O fluxo inicial controla um pagamento integral por proposta aprovada; parcelamento e conciliação bancária não estão implementados.
 
+## Arquivamento, lixeira e WhatsApp
+
+O gerenciamento de pedidos possui abas Ativos, Arquivados e Lixeira, menu de ações, restauração e confirmações de exclusão. A migration `20261125133506_order_lifecycle.sql` está **versionada, mas ainda depende de aprovação para aplicação no Supabase**. Até lá, os pedidos atuais continuam acessíveis e as novas ações ficam desativadas, sem consultas a colunas inexistentes. [Revisão, retenção e autorização](docs/order-lifecycle-migration.md).
+
+Após ativação, arquivamento e lixeira preservam o status comercial. A exclusão definitiva é restrita e bloqueada para propostas, pagamentos, arquivos, comprovantes, mensagens e relacionamentos não revisados. A área financeira conserva os registros de pedidos arquivados ou na lixeira.
+
+O botão flutuante mostra ícone e texto **WhatsApp**, abre `wa.me` em outra aba e consulta somente o contato público de `site_settings`. O número não fica espalhado pelo código. O administrador configura número/mensagem/ativação em Configurações → WhatsApp. O botão atualiza ao receber foco ou em até 20 segundos enquanto a página estiver visível; fica oculto sem contato válido, nas áreas privadas e durante edição de formulários ou modais.
+
 ## Notificações por e-mail (opcional)
 
 Notificações internas funcionam com o banco. Eventos também entram em `private.email_outbox`, sem expor comprovantes, chave Pix ou briefing por e-mail.
